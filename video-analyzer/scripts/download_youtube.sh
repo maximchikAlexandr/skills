@@ -173,6 +173,8 @@ fetch_transcription_from_site_subtitles() {
       --write-auto-subs \
       --sub-lang "$lang_expr" \
       --sub-format "best" \
+      --extractor-retries 3 \
+      --retry-sleep extractor:5 \
       -o "${tmp_dir}/subtitle.%(ext)s" \
       "$video_url" >/dev/null 2>&1 || true
 

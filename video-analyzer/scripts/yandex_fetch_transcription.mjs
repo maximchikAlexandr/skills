@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Reference: https://github.com/ilyhalight/voice-over-translation
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -109,6 +110,7 @@ for (const client of clients) {
       const res = await client.getSubtitles({
         videoData,
         requestLang,
+        responseLang: targetLang,
       });
       if (!res?.waiting && Array.isArray(res.subtitles) && res.subtitles.length) {
         subtitlesPayload = res;

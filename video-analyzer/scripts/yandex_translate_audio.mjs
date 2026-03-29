@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Reference: https://github.com/ilyhalight/voice-over-translation
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";

@@ -4,6 +4,10 @@
 
 Лог отражает текущее состояние разработки `video-analyzer` и принятые рабочие решения, чтобы продолжить реализацию в другом треде без потери контекста.
 
+## Reference
+
+Yandex translation/subtitles API integration based on [voice-over-translation](https://github.com/ilyhalight/voice-over-translation) — browser extension that proxies Yandex Browser voiceover API. Used as reference for understanding protobuf endpoints (`/video-translation/translate`, `/video-subtitles/get-subtitles`), session flow, and the `@vot.js/ext` client library.
+
 ## Current state (implemented)
 
 1. Базовые скрипты:
@@ -56,12 +60,34 @@
 - `VIDEO_ANALYZER_SUBS_MAX_ATTEMPTS`
 - `VIDEO_ANALYZER_SUBS_POLL_SECONDS`
 
+## Iteration 2: deduplicate rolling captions, improve language handling
+
+### Problem
+
+1. YouTube auto-generated VTT use a "rolling" display pattern: short (~10 ms) flash cues alternate with longer cues that repeat the tail of the previous cue + new words.  `subtitles_to_txt.py` treated every cue independently → каждая строка дублировалась ~3 раза.
+2. Транскрипции приходили на английском, хотя `audio_lang=ru`. Причина: Yandex subtitles API возвращает `waiting=true` / пустой список; fallback на site subtitles получал английские субтитры; `getSubtitles` не передавал `responseLang`.
+
+### Changes
+
+1. `subtitles_to_txt.py`:
+   - Добавлен `_deduplicate_rolling_cues`: фильтрует flash-cues (< 100 ms), убирает word-level overlap между consecutive cues.
+   - Дедупликация активируется автоматически только при > 20 % flash cues (обычные SRT не затрагиваются).
+   - Результат: 1565 строк → 228 (Unison видео), 94 (test видео); текст без дублирования.
+2. `yandex_fetch_transcription.mjs` — `getSubtitles` теперь передаёт `responseLang: targetLang`.
+3. `download_youtube.sh` — yt-dlp subtitle fallback: `--extractor-retries 3 --retry-sleep extractor:5`.
+
+### Test results (https://www.youtube.com/watch?v=mViFYTwWvcM)
+
+- `translation_status=ok` — перевод аудио успешен.
+- `transcription_source=site_subtitles`, `lang=en-en` — Yandex subtitles API снова не вернул данных; fallback получил английские субтитры площадки.
+- Текст без дублирования, чистый.
+
 ## Open items / risks
 
 1. Точность и полнота `transcript_plain.txt` зависит от качества исходных субтитров (Yandex или YouTube auto-captions).
 2. Для длинных видео время выполнения заметно растет из-за сетевых ретраев.
-3. Нужна финальная политика при `429` (например, backoff/jitter, отдельный retry профайл для subtitles).
-4. Нужна финальная договоренность: допустим ли fallback язык транскрипции, если целевой язык недоступен.
+3. Yandex subtitles API часто не отдаёт данные (`waiting=true`). `responseLang` передаётся, но это не гарантирует получение субтитров.
+4. При fallback на site subtitles язык может отличаться от целевого, если YouTube не предоставляет авто-перевод (429) или субтитров на целевом языке.
 
 ## Commits in this thread (relevant)
 

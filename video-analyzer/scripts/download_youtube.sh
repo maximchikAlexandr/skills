@@ -25,25 +25,11 @@ normalize_lang() {
   printf '%s' "$raw"
 }
 
-translate_audio_with_yandex() {
-  local video_url="$1"
-  local source_lang="$2"
-  local target_lang="$3"
-  local out_file="$4"
-  local duration_seconds="$5"
-  local max_attempts="${VIDEO_ANALYZER_TRANSLATE_MAX_ATTEMPTS:-12}"
-  local poll_seconds="${VIDEO_ANALYZER_TRANSLATE_POLL_SECONDS:-10}"
+ensure_vot_node_deps() {
   local deps_dir="${HOME}/.cache/video-analyzer/vot-node"
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  local translator_js="${script_dir}/yandex_translate_audio.mjs"
 
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "Node.js/npm not found, skip Yandex translation." >&2
-    return 1
-  fi
-  if [[ ! -f "$translator_js" ]]; then
-    echo "Translator script not found: $translator_js" >&2
+    echo "Node.js/npm not found, skip Yandex API features." >&2
     return 1
   fi
 
@@ -67,6 +53,30 @@ JSON
     (cd "$deps_dir" && npm install --silent --no-progress)
   fi
 
+  printf '%s' "$deps_dir"
+}
+
+translate_audio_with_yandex() {
+  local video_url="$1"
+  local source_lang="$2"
+  local target_lang="$3"
+  local out_file="$4"
+  local duration_seconds="$5"
+  local max_attempts="${VIDEO_ANALYZER_TRANSLATE_MAX_ATTEMPTS:-12}"
+  local poll_seconds="${VIDEO_ANALYZER_TRANSLATE_POLL_SECONDS:-10}"
+  local deps_dir
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local translator_js="${script_dir}/yandex_translate_audio.mjs"
+
+  if [[ ! -f "$translator_js" ]]; then
+    echo "Translator script not found: $translator_js" >&2
+    return 1
+  fi
+  if ! deps_dir="$(ensure_vot_node_deps)"; then
+    return 1
+  fi
+
   VA_DEPS_DIR="$deps_dir" \
     node "$translator_js" \
       "$video_url" \
@@ -76,6 +86,116 @@ JSON
       "$duration_seconds" \
       "$max_attempts" \
       "$poll_seconds"
+}
+
+fetch_transcription_with_yandex() {
+  local video_url="$1"
+  local source_lang="$2"
+  local target_lang="$3"
+  local out_dir="$4"
+  local duration_seconds="$5"
+  local max_attempts="${VIDEO_ANALYZER_SUBS_MAX_ATTEMPTS:-8}"
+  local poll_seconds="${VIDEO_ANALYZER_SUBS_POLL_SECONDS:-5}"
+  local deps_dir
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local transcript_js="${script_dir}/yandex_fetch_transcription.mjs"
+
+  if [[ ! -f "$transcript_js" ]]; then
+    echo "Transcription script not found: $transcript_js" >&2
+    return 1
+  fi
+  if ! deps_dir="$(ensure_vot_node_deps)"; then
+    return 1
+  fi
+
+  VA_DEPS_DIR="$deps_dir" \
+    node "$transcript_js" \
+      "$video_url" \
+      "$source_lang" \
+      "$target_lang" \
+      "$out_dir" \
+      "$duration_seconds" \
+      "$max_attempts" \
+      "$poll_seconds"
+}
+
+fetch_transcription_from_site_subtitles() {
+  local video_url="$1"
+  local target_lang="$2"
+  local source_lang="$3"
+  local out_dir="$4"
+  local tmp_dir="${out_dir}/.tmp_site_subs"
+  local with_timestamps_file="${out_dir}/transcript_with_timestamps.txt"
+  local plain_file="${out_dir}/transcript_plain.txt"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local converter_py="${script_dir}/subtitles_to_txt.py"
+  local subtitle_file=""
+  local attempt_langs=()
+  local lang_set=""
+  local lang_expr=""
+  local detected_sub_lang=""
+
+  if [[ ! -f "$converter_py" ]]; then
+    echo "Subtitle converter script not found: $converter_py" >&2
+    return 1
+  fi
+
+  mkdir -p "$out_dir"
+
+  attempt_langs+=("$target_lang")
+  if [[ -n "$source_lang" && "$source_lang" != "auto" && "$source_lang" != "$target_lang" ]]; then
+    attempt_langs+=("$source_lang")
+  fi
+  if [[ "$target_lang" != "en" ]]; then
+    attempt_langs+=("en")
+  fi
+
+  for lang in "${attempt_langs[@]}"; do
+    if [[ -z "$lang" ]]; then
+      continue
+    fi
+    case ",$lang_set," in
+      *",$lang,"*) continue ;;
+      *) lang_set="${lang_set},${lang}" ;;
+    esac
+    rm -rf "$tmp_dir"
+    mkdir -p "$tmp_dir"
+    if [[ "$lang" == "en" ]]; then
+      lang_expr="en,en-US,en-orig,en.*"
+    else
+      lang_expr="${lang},${lang}.*"
+    fi
+    yt-dlp \
+      --skip-download \
+      --write-subs \
+      --write-auto-subs \
+      --sub-lang "$lang_expr" \
+      --sub-format "best" \
+      -o "${tmp_dir}/subtitle.%(ext)s" \
+      "$video_url" >/dev/null 2>&1 || true
+
+    subtitle_file="$(find "$tmp_dir" -maxdepth 1 -type f \( -name '*.srt' -o -name '*.vtt' \) | head -n1)"
+    if [[ -n "$subtitle_file" ]]; then
+      break
+    fi
+  done
+
+  if [[ -z "$subtitle_file" ]]; then
+    rm -rf "$tmp_dir"
+    return 1
+  fi
+
+  python3 "$converter_py" "$subtitle_file" "$with_timestamps_file" "$plain_file"
+
+  detected_sub_lang="$(basename "$subtitle_file" | sed -E 's/^subtitle\.([^.]+)\..+$/\1/')"
+  if [[ -z "$detected_sub_lang" ]]; then
+    detected_sub_lang="unknown"
+  fi
+
+  rm -rf "$tmp_dir"
+  echo "site_subtitles_lang=$detected_sub_lang"
 }
 
 url="$1"
@@ -137,6 +257,12 @@ selected_audio_lang_norm="$(normalize_lang "$selected_audio_lang")"
 translation_status="skipped_track_exists"
 translated_audio_file=""
 translation_info=""
+transcription_status="failed"
+transcription_source="none"
+transcription_dir="${out_dir}/transcription"
+transcription_with_timestamps_file="${transcription_dir}/transcript_with_timestamps.txt"
+transcription_plain_file="${transcription_dir}/transcript_plain.txt"
+transcription_info=""
 
 if [[ "$selected_audio_lang_norm" != "$requested_lang_norm" ]]; then
   translation_status="failed"
@@ -151,6 +277,21 @@ fi
 
 translation_info="$(printf '%s' "${translation_info:-}" | tr '\n' ' ' | tr -s ' ')"
 
+if transcription_info="$(fetch_transcription_with_yandex "$url" "$selected_audio_lang_norm" "$requested_lang_norm" "$transcription_dir" "$duration_seconds" 2>&1)"; then
+  transcription_status="ok"
+  transcription_source="yandex"
+else
+  rm -f "$transcription_with_timestamps_file" "$transcription_plain_file" || true
+  if transcription_info="$(fetch_transcription_from_site_subtitles "$url" "$requested_lang_norm" "$selected_audio_lang_norm" "$transcription_dir" 2>&1)"; then
+    transcription_status="ok"
+    transcription_source="site_subtitles"
+  else
+    transcription_status="failed"
+    transcription_source="none"
+  fi
+fi
+transcription_info="$(printf '%s' "${transcription_info:-}" | tr '\n' ' ' | tr -s ' ')"
+
 {
   echo "url=$url"
   echo "requested_audio_lang=$audio_lang"
@@ -164,6 +305,12 @@ translation_info="$(printf '%s' "${translation_info:-}" | tr '\n' ' ' | tr -s ' 
   echo "translation_status=$translation_status"
   echo "translated_audio_file=${translated_audio_file:-}"
   echo "translation_info=${translation_info:-}"
+  echo "transcription_status=$transcription_status"
+  echo "transcription_source=$transcription_source"
+  echo "transcription_dir=$transcription_dir"
+  echo "transcription_with_timestamps_file=$transcription_with_timestamps_file"
+  echo "transcription_plain_file=$transcription_plain_file"
+  echo "transcription_info=${transcription_info:-}"
 } > "${out_dir}/download_metadata.txt"
 
 echo "Downloaded to: ${out_dir}"

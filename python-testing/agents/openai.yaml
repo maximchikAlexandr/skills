@@ -1,0 +1,4 @@
+interface:
+  display_name: "Python Testing"
+  short_description: "Design robust behavior-focused Python tests"
+  default_prompt: "Use $python-testing to design and implement focused tests for this Python change."

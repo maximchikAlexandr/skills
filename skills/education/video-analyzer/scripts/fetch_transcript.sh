@@ -28,20 +28,36 @@ else
   exit 1
 fi
 
-result="$("${command[@]}" \
-  --json \
-  --subs \
-  --subs-format=vtt \
-  --lang="$source_lang" \
-  --reslang="$result_lang" \
-  --no-title \
-  --outdir="$output_dir" \
-  "$url")"
+max_attempts="${VIDEO_ANALYZER_SUBS_MAX_ATTEMPTS:-18}"
+poll_seconds="${VIDEO_ANALYZER_SUBS_POLL_SECONDS:-10}"
+result=""
+transcript=""
 
-transcript="$(python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["results"][0].get("outputPath") or "")' <<<"$result")"
+for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+  set +e
+  result="$("${command[@]}" \
+    --json \
+    --subs \
+    --subs-format=vtt \
+    --lang="$source_lang" \
+    --reslang="$result_lang" \
+    --no-title \
+    --outdir="$output_dir" \
+    "$url" 2>&1)"
+  set -e
+  transcript="$(python3 -c 'import json,sys
+try:
+    data=json.load(sys.stdin)
+    print(data["results"][0].get("outputPath") or "")
+except (ValueError, KeyError, IndexError, TypeError):
+    print("")' <<<"$result")"
+  [[ -s "$transcript" ]] && break
+  ((attempt < max_attempts)) && sleep "$poll_seconds"
+done
+
 if [[ ! -s "$transcript" ]]; then
   printf '%s\n' "$result" >&2
-  echo "vot-cli did not produce a transcript." >&2
+  echo "vot-cli did not produce a transcript after $max_attempts attempts." >&2
   exit 1
 fi
 

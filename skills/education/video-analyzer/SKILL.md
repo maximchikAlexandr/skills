@@ -36,7 +36,11 @@ Do not download, translate, or send media to external services unless the user r
 global `vot-cli`, or Node.js with `npx` as a fallback. Treat a successful
 process exit and a non-empty output file as the evidence of success; a failed
 language pair may be retried with the video's source language and `ru` as the
-result language. VOT is unofficial and can fail or rate-limit.
+result language. VOT may initially return an empty `waiting` result while its
+backend prepares subtitles, so the script polls rather than treating the first
+response as final. Tune the bounded retry with
+`VIDEO_ANALYZER_SUBS_MAX_ATTEMPTS` and `VIDEO_ANALYZER_SUBS_POLL_SECONDS`. VOT
+is unofficial and can still fail, rate-limit, or remain pending indefinitely.
 
 ## Frame artifacts
 

@@ -55,6 +55,9 @@ class CliFlowTests(TestCase):
             self.assertIn(
                 completed["report_hash"], stored_report.read_text(encoding="utf-8")
             )
+            rendered = stored_report.read_text(encoding="utf-8")
+            self.assertIn('data-copy-report-id', rendered)
+            self.assertLess(rendered.index("data-vidra-report-copy"), rendered.index("</body>"))
 
             next_transcript = root / "next.vtt"
             next_transcript.write_text("new verified transcript " * 20, encoding="utf-8")

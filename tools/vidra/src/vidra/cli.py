@@ -6,6 +6,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import sqlite3
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,7 +16,13 @@ from urllib.parse import unquote, urlparse
 
 import typer
 
-from .domain import CATEGORY_LIMIT, normalize_category, normalize_source, report_hash, require_transition
+from .domain import (
+    CATEGORY_LIMIT,
+    normalize_category,
+    normalize_source,
+    report_hash,
+    require_transition,
+)
 
 ROOT = Path(os.environ.get("VIDRA_HOME", Path.home() / ".vidra")).expanduser()
 DB = ROOT / "vidra.sqlite3"
@@ -104,25 +111,64 @@ def view(row):
 
 
 def with_report_identity(source: Path, identity: str) -> bytes:
-    """Insert or replace the visible report identity banner."""
-    marker = '<aside data-vidra-report-id="true"'
+    """Place a copyable report id immediately after the library link."""
     html = source.read_text(encoding="utf-8")
-    if marker in html:
-        start = html.index(marker)
-        end = html.index("</aside>", start) + len("</aside>")
-        html = html[:start] + html[end:]
-    banner = (
-        f'{marker} style="position:relative;margin:12px auto;max-width:1200px;'
-        'padding:10px 14px;border:1px solid #d7e2e0;border-radius:10px;'
-        'font:600 13px/1.4 ui-monospace,SFMono-Regular,monospace;color:#315b55;'
-        'background:#f4faf8">Vidra report <code style="user-select:all">'
-        f'{identity}</code></aside>'
+    html = re.sub(
+        r'<(?:aside|span)\s+data-vidra-report-id="true".*?</(?:aside|span)>',
+        "",
+        html,
+        flags=re.DOTALL,
     )
-    body = html.lower().find("<body")
-    if body < 0:
-        raise SystemExit("report HTML must contain <body>")
-    close = html.find(">", body)
-    return (html[: close + 1] + banner + html[close + 1 :]).encode("utf-8")
+    html = re.sub(
+        r'<script\s+data-vidra-report-copy="true">.*?</script>',
+        "",
+        html,
+        flags=re.DOTALL,
+    )
+    control = (
+        '<span data-vidra-report-id="true" style="display:inline-flex;align-items:center;'
+        'gap:7px;min-width:0;margin-left:10px;font:600 12px/1.2 system-ui,sans-serif">'
+        '<span style="white-space:nowrap;opacity:.78">ID отчёта</span>'
+        '<span style="display:inline-flex;align-items:center;overflow:hidden;border:1px solid '
+        'currentColor;border-radius:7px;background:#fff;color:#315b55">'
+        f'<code style="padding:5px 8px;user-select:all">{identity}</code>'
+        '<button type="button" data-copy-report-id aria-label="Скопировать ID отчёта" '
+        'title="Скопировать ID отчёта" style="display:grid;place-items:center;width:30px;height:28px;'
+        'padding:0;border:0;border-left:1px solid #c7d7d3;background:#edf6f3;color:#315b55;cursor:pointer">'
+        '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 8h11v11H8zM5 16H4V5h11v1" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
+        '</button></span></span>'
+    )
+    library_link = re.search(
+        r'(<a\b[^>]*>[^<]*(?:Все видео|All videos)[^<]*</a>)',
+        html,
+        flags=re.IGNORECASE,
+    )
+    if library_link:
+        position = library_link.end()
+        html = html[:position] + control + html[position:]
+    else:
+        body = html.lower().find("<body")
+        if body < 0:
+            raise SystemExit("report HTML must contain <body>")
+        position = html.find(">", body) + 1
+        html = html[:position] + control + html[position:]
+
+    copy_script = (
+        '<script data-vidra-report-copy="true">(()=>{const b=document.querySelector('
+        "'[data-copy-report-id]'),c=document.querySelector('[data-vidra-report-id] code');"
+        "if(!b||!c)return;b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(c.textContent);"
+        "const t=b.title;b.title='Скопировано';b.setAttribute('aria-label','Скопировано');setTimeout(()=>{b.title=t;"
+        "b.setAttribute('aria-label','Скопировать ID отчёта')},1200)}catch{const r=document.createRange();"
+        "r.selectNodeContents(c);const s=getSelection();s.removeAllRanges();s.addRange(r)}})})();</script>"
+    )
+    body_close = html.lower().rfind("</body>")
+    html = html[:body_close] + copy_script + html[body_close:] if body_close >= 0 else html + copy_script
+    html = html.replace(
+        "default-src 'none'; style-src",
+        "default-src 'none'; script-src 'unsafe-inline'; style-src",
+    )
+    return html.encode("utf-8")
 
 
 def emit(payload, pretty=False):

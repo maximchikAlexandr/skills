@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { categoryCounts, catalogStats, normalizeCatalog, reportHref, reportsInCategory, videoIdFromUrl } from './catalog.js';
+import { categoryCounts, categoryLabel, catalogStats, normalizeCatalog, reportHref, reportsInCategory, videoIdFromUrl } from './catalog.js';
 
 test('normalizes catalog without mutating its input', () => {
   const payload = { queue: [{ id: 1, status: 'queued' }], reports: [{ id: 2, report_url: 'reports/a b.html' }] };
@@ -30,4 +30,5 @@ test('builds a nested category index and filters descendants', () => {
     { path: 'http', count: 1, depth: 0 },
   ]);
   assert.equal(reportsInCategory(reports, 'ai').length, 2);
+  assert.equal(categoryLabel('functional-programming'), 'Функциональное программирование');
 });

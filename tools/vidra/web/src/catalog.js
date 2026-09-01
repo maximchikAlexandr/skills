@@ -61,3 +61,15 @@ export const categoryCounts = (reports) => Object.freeze(
 export const reportsInCategory = (reports, category) => (
   category ? reports.filter(({ category: reportCategory = 'uncategorized' }) => reportCategory === category || reportCategory.startsWith(`${category}/`)) : reports
 );
+
+const CATEGORY_LABELS = Object.freeze({
+  ai: 'AI',
+  http: 'HTTP',
+  'functional-programming': 'Функциональное программирование',
+  uncategorized: 'Без категории',
+});
+
+export const categoryLabel = (path = '') => {
+  const name = path.split('/').filter(Boolean).at(-1) ?? path;
+  return CATEGORY_LABELS[name] ?? name.replaceAll('-', ' ');
+};

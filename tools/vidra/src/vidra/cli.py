@@ -110,15 +110,37 @@ def view(row):
     return out
 
 
-def with_report_identity(source: Path, identity: str) -> bytes:
-    """Place a copyable report id immediately after the library link."""
-    html = source.read_text(encoding="utf-8")
-    html = re.sub(
-        r'<(?:aside|span)\s+data-vidra-report-id="true".*?</(?:aside|span)>',
+def _without_report_identity(html: str) -> str:
+    """Remove the injected control without confusing its nested spans."""
+    marker = 'data-vidra-report-id="true"'
+    marker_at = html.find(marker)
+    if marker_at < 0:
+        return html
+    start = html.rfind("<span", 0, marker_at)
+    if start < 0:
+        start = html.rfind("<aside", 0, marker_at)
+        end = html.find("</aside>", marker_at)
+        return html[:start] + html[end + len("</aside>") :] if start >= 0 and end >= 0 else html
+    depth = 0
+    for tag in re.finditer(r"</?span\b[^>]*>", html[start:], flags=re.IGNORECASE):
+        depth += -1 if tag.group().startswith("</") else 1
+        if depth == 0:
+            end = start + tag.end()
+            html = html[:start] + html[end:]
+            break
+    return re.sub(
+        r'<span\s+style="display:inline-flex;align-items:center;overflow:hidden[^>]*>'
+        r'.*?data-copy-report-id.*?</span>',
         "",
         html,
         flags=re.DOTALL,
     )
+
+
+def with_report_identity(source: Path, identity: str) -> bytes:
+    """Place a copyable report id immediately after the library link."""
+    html = source.read_text(encoding="utf-8")
+    html = _without_report_identity(html)
     html = re.sub(
         r'<script\s+data-vidra-report-copy="true">.*?</script>',
         "",

@@ -22,6 +22,7 @@ class ReportHtmlTests(TestCase):
         self.assertLess(second.index("Все видео"), second.index("ID отчёта"))
         self.assertLess(second.index("ID отчёта"), second.index("abc123def456"))
         self.assertIn('aria-label="Скопировать ID отчёта"', second)
+        self.assertEqual(second.count("abc123def456"), 1)
 
     def test_copy_script_is_allowed_by_self_contained_report_csp(self):
         with TemporaryDirectory() as directory:
@@ -34,3 +35,21 @@ class ReportHtmlTests(TestCase):
             rendered = with_report_identity(source, "abc123def456").decode()
 
         self.assertIn("script-src 'unsafe-inline'", rendered)
+
+    def test_repairs_legacy_duplicate_hash_field(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "report.html"
+            source.write_text(
+                '<html><body><a href="../">Все видео</a>'
+                '<span data-vidra-report-id="true"><span><code>old</code>'
+                '<button data-copy-report-id></button></span></span>'
+                '<span style="display:inline-flex;align-items:center;overflow:hidden">'
+                '<code>old</code><button data-copy-report-id></button></span>'
+                '</body></html>',
+                encoding="utf-8",
+            )
+            rendered = with_report_identity(source, "new123").decode()
+
+        self.assertNotIn("old", rendered)
+        self.assertEqual(rendered.count("new123"), 1)
+        self.assertEqual(rendered.count("data-copy-report-id"), 2)

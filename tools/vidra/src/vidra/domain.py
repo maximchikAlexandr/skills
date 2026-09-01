@@ -56,3 +56,11 @@ def require_transition(current: str, target: str) -> None:
 def report_slug(title: str, limit: int = 48) -> str:
     words = "".join(char.lower() if char.isalnum() else " " for char in title).split()
     return "-".join(words)[:limit] or "report"
+
+
+def report_hash(seed: bytes, source_keys: tuple[str, ...], created_at: str) -> str:
+    """Return a short identifier that stays stable when a report is edited."""
+    payload = b"\0".join(
+        (seed, "\n".join(sorted(source_keys)).encode(), created_at.encode())
+    )
+    return sha256(payload).hexdigest()[:12]

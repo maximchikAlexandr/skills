@@ -4,6 +4,7 @@ from unittest import TestCase
 
 from vidra.domain import (
     normalize_source,
+    report_hash,
     report_slug,
     require_transition,
 )
@@ -36,3 +37,9 @@ class DomainTests(TestCase):
     def test_report_slug_is_safe_and_bounded(self):
         self.assertEqual(report_slug("  Практика: HTTP/3!  "), "практика-http-3")
         self.assertEqual(len(report_slug("a" * 100)), 48)
+
+    def test_report_hash_is_short_and_stable(self):
+        first = report_hash(b"html", ("youtube:b", "youtube:a"), "stamp")
+        second = report_hash(b"html", ("youtube:a", "youtube:b"), "stamp")
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 12)

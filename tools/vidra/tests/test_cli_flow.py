@@ -27,7 +27,10 @@ class CliFlowTests(TestCase):
             transcript = root / "transcript.txt"
             transcript.write_text("verified transcript " * 20, encoding="utf-8")
             report = root / "report.html"
-            report.write_text("<!doctype html><title>Report</title>", encoding="utf-8")
+            report.write_text(
+                "<!doctype html><title>Report</title><body>Report</body>",
+                encoding="utf-8",
+            )
 
             queued = self.run_vidra(root / "home", "queue", "add", SOURCE)
             video_id = str(queued["video"]["id"])
@@ -48,6 +51,28 @@ class CliFlowTests(TestCase):
             )
             stored_report = root / "home" / completed["report_url"]
             self.assertTrue(stored_report.is_file())
+            self.assertEqual(stored_report.name, f'{completed["report_hash"]}.html')
+            self.assertIn(
+                completed["report_hash"], stored_report.read_text(encoding="utf-8")
+            )
+
+            next_transcript = root / "next.vtt"
+            next_transcript.write_text("new verified transcript " * 20, encoding="utf-8")
+            updated_report = root / "updated.html"
+            updated_report.write_text("<!doctype html><body>Updated</body>", encoding="utf-8")
+            attached = self.run_vidra(
+                root / "home",
+                "report",
+                "add",
+                completed["report_hash"],
+                "https://youtu.be/next456",
+                "--transcript-file",
+                str(next_transcript),
+                "--report-file",
+                str(updated_report),
+            )
+            self.assertEqual(attached["result"], "attached")
+            self.assertIn("Updated", stored_report.read_text(encoding="utf-8"))
 
             removed = self.run_vidra(
                 root / "home", "queue", "remove", video_id, "--yes"

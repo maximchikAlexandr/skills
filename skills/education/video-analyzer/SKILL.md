@@ -13,6 +13,14 @@ Never create or register a report without a real, non-empty transcript. If
 transcription fails, mark the run failed, retain the video in the queue, show
 the reason, and leave the report fields empty.
 
+Reports use a stable 12-character hash as their filename and lookup key. Put
+each new report in the narrowest existing real directory with `--category`;
+the initial top-level taxonomy is `ai`, `http`, and
+`functional-programming`. Do not create deeper structure until Vidra emits
+`category_reindex_required`. When it does, read
+[references/category-reindexing.md](references/category-reindexing.md) and
+follow that bounded reindexing workflow.
+
 ## Choose the path
 
 - For a YouTube URL, run `scripts/fetch_transcript.sh <url> [source-language] [result-language]`. It writes VTT directly into the video's Vidra artifact directory.
@@ -73,3 +81,21 @@ Identify agreements, complementary layers, and contradictions; do not merely
 concatenate summaries. A combined report is registered only after each covered
 video is in `analyzing` state and has its own verified transcript. Register the
 same report path for all covered videos so the catalog renders one report.
+
+## Extending an existing report
+
+When a user asks to add a video to a report, locate it by the visible report
+hash. Fetch and read only the new video's complete transcript, then revise the
+existing report so the new source is integrated into its synthesis rather than
+appended as an isolated summary. Preserve all existing supported claims and
+source identities. Register the result with:
+
+```text
+vidra report add REPORT_HASH VIDEO \
+  --transcript-file NEW_TRANSCRIPT.vtt \
+  --report-file UPDATED_REPORT.html
+```
+
+The command rejects missing transcripts, keeps the report hash stable, updates
+the single HTML file, and associates the new video. Never use it with a
+placeholder or model-generated transcript.

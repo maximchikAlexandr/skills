@@ -19,6 +19,9 @@ vidra analyze begin VIDEO --user-approved
 vidra analyze fail VIDEO --error 'transcription unavailable'
 vidra report add REPORT_HASH VIDEO --transcript-file transcript.vtt --report-file updated.html
 vidra report normalize
+vidra report move REPORT_HASH ai/code-review
+vidra report list --category ai
+vidra category tree
 vidra doctor
 vidra serve
 ```
@@ -28,6 +31,11 @@ lookup key. `report add` accepts that key, verifies the new video's transcript,
 replaces the report with the supplied expanded HTML, and associates the new
 video without reprocessing existing transcripts. `report normalize` upgrades
 legacy filenames while preserving the old files on disk.
+
+Reports live in real slash-separated category directories. The web interface
+renders those directories as a navigable hierarchy. Vidra warns when a leaf
+directory reaches 10 reports; follow the skill's `category-reindexing.md`
+workflow and use `report move` so the filesystem and SQLite stay consistent.
 
 ## Web interface
 

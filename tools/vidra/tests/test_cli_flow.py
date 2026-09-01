@@ -74,6 +74,18 @@ class CliFlowTests(TestCase):
             self.assertEqual(attached["result"], "attached")
             self.assertIn("Updated", stored_report.read_text(encoding="utf-8"))
 
+            moved = self.run_vidra(
+                root / "home",
+                "report",
+                "move",
+                completed["report_hash"],
+                "ai/code-review",
+            )
+            stored_report = root / "home" / moved["report_url"]
+            self.assertTrue(stored_report.is_file())
+            categories = self.run_vidra(root / "home", "category", "tree", "--json")
+            self.assertEqual(categories, [{"category": "ai/code-review", "reports": 1}])
+
             removed = self.run_vidra(
                 root / "home", "queue", "remove", video_id, "--yes"
             )

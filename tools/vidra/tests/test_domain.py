@@ -3,9 +3,9 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from vidra.domain import (
+    normalize_category,
     normalize_source,
     report_hash,
-    report_slug,
     require_transition,
 )
 
@@ -34,12 +34,13 @@ class DomainTests(TestCase):
         with self.assertRaisesRegex(ValueError, "invalid video transition"):
             require_transition("queued", "analyzed")
 
-    def test_report_slug_is_safe_and_bounded(self):
-        self.assertEqual(report_slug("  Практика: HTTP/3!  "), "практика-http-3")
-        self.assertEqual(len(report_slug("a" * 100)), 48)
-
     def test_report_hash_is_short_and_stable(self):
         first = report_hash(b"html", ("youtube:b", "youtube:a"), "stamp")
         second = report_hash(b"html", ("youtube:a", "youtube:b"), "stamp")
         self.assertEqual(first, second)
         self.assertEqual(len(first), 12)
+
+    def test_category_is_a_safe_relative_path(self):
+        self.assertEqual(normalize_category("AI / Code Review"), "ai/code-review")
+        with self.assertRaisesRegex(ValueError, "invalid category"):
+            normalize_category("ai/../review")

@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlparse
 
 import typer
 
-from .domain import normalize_source, report_hash, require_transition
+from .domain import CATEGORY_LIMIT, normalize_category, normalize_source, report_hash, require_transition
 
 ROOT = Path(os.environ.get("VIDRA_HOME", Path.home() / ".vidra")).expanduser()
 DB = ROOT / "vidra.sqlite3"
@@ -63,6 +63,8 @@ def db():
     columns = {row[1] for row in conn.execute("PRAGMA table_info(videos)")}
     if "report_hash" not in columns:
         conn.execute("ALTER TABLE videos ADD COLUMN report_hash TEXT")
+    if "category" not in columns:
+        conn.execute("ALTER TABLE videos ADD COLUMN category TEXT NOT NULL DEFAULT 'uncategorized'")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS videos_report_hash_idx ON videos(report_hash)"
     )
@@ -127,6 +129,22 @@ def emit(payload, pretty=False):
     print(json.dumps(payload, ensure_ascii=False, indent=2 if pretty else None))
 
 
+def category_warning(conn, category):
+    count = conn.execute(
+        "SELECT count(DISTINCT report_hash) FROM videos WHERE status='analyzed' AND category=?",
+        (category,),
+    ).fetchone()[0]
+    if count < CATEGORY_LIMIT:
+        return None
+    return {
+        "code": "category_reindex_required",
+        "category": category,
+        "report_count": count,
+        "limit": CATEGORY_LIMIT,
+        "instructions": "skills/education/video-analyzer/references/category-reindexing.md",
+    }
+
+
 def queue_add(
     source: str,
     title: Optional[str] = typer.Option(None),
@@ -159,7 +177,7 @@ def queue_add(
         emit({"result": "queued", "video": view(get(conn, str(cur.lastrowid)))})
 
 
-def list_rows(json_output=False, all_rows=False, report=False):
+def list_rows(json_output=False, all_rows=False, report=False, category=None):
     conn = db()
     where = (
         "status='analyzed'"
@@ -170,10 +188,17 @@ def list_rows(json_output=False, all_rows=False, report=False):
             else "status IN ('queued','analyzing','failed')"
         )
     )
+    if category:
+        where += " AND category=?"
     rows = [
         view(r)
-        for r in conn.execute(f"SELECT * FROM videos WHERE {where} ORDER BY created_at")
+        for r in conn.execute(
+            f"SELECT * FROM videos WHERE {where} ORDER BY created_at",
+            (category,) if category else (),
+        )
     ]
+    if report:
+        rows = list({row["report_hash"]: row for row in rows}.values())
     if json_output:
         emit(rows, True)
     elif not rows:
@@ -273,6 +298,7 @@ def complete(
     title: str = typer.Option(...),
     also: Optional[List[str]] = typer.Option(None),
     concept: str = typer.Option(""),
+    category: str = typer.Option("uncategorized"),
 ):
     conn = db()
     rows = [get(conn, video)] + [get(conn, value) for value in (also or [])]
@@ -283,6 +309,10 @@ def complete(
     ]
     if bad:
         raise SystemExit("expected analyzing: " + ", ".join(bad))
+    try:
+        category = normalize_category(category)
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="--category") from error
     source = report_file.expanduser().resolve()
     if not source.is_file() or source.suffix.lower() != ".html":
         raise SystemExit("--report-file must be an existing HTML file")
@@ -303,27 +333,31 @@ def complete(
         source.read_bytes(), tuple(row["source_key"] for row in rows), stamp
     )
     name = f"{identity}.html"
-    target = REPORTS / name
+    report_dir = REPORTS / category
+    report_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = report_dir / name
     target.write_bytes(with_report_identity(source, identity))
     target.chmod(0o600)
     with conn:
         for row in rows:
             conn.execute(
-                "UPDATE videos SET status='analyzed',report_title=?,report_concept=?,report_path=?,report_hash=?,completed_at=?,updated_at=?,error=NULL WHERE id=?",
-                (title, concept, str(target), identity, stamp, stamp, row["id"]),
+                "UPDATE videos SET status='analyzed',report_title=?,report_concept=?,report_path=?,report_hash=?,category=?,completed_at=?,updated_at=?,error=NULL WHERE id=?",
+                (title, concept, str(target), identity, category, stamp, stamp, row["id"]),
             )
             conn.execute(
                 "UPDATE runs SET status='analyzed',finished_at=? WHERE id=(SELECT id FROM runs WHERE video_id=? AND status='analyzing' ORDER BY id DESC LIMIT 1)",
                 (stamp, row["id"]),
             )
-    emit(
-        {
+    payload = {
             "result": "analyzed",
             "video_ids": [row["id"] for row in rows],
             "report_hash": identity,
-            "report_url": f"reports/{name}",
+            "report_url": f"reports/{category}/{name}",
         }
-    )
+    warning = category_warning(conn, category)
+    if warning:
+        payload["warning"] = warning
+    emit(payload)
 
 
 def report_add(
@@ -358,29 +392,39 @@ def report_add(
         raise SystemExit(f"registered report file is missing: {target}")
     target.write_bytes(with_report_identity(updated, report))
     target.chmod(0o600)
+    artifact_dir = ARTIFACTS / slug
+    transcript_dir = artifact_dir / "transcription"
+    transcript_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    stored_transcript = transcript_dir / transcript.name
+    if transcript != stored_transcript:
+        stored_transcript.write_bytes(transcript.read_bytes())
+        stored_transcript.chmod(0o600)
     stamp = now()
-    report_title = title or members[0]["report_title"]
+    report_title = members[0]["report_title"]
+    category = members[0]["category"]
     with conn:
         if video:
             conn.execute(
-                "UPDATE videos SET source_url=?,source_slug=?,title=?,status='analyzed',report_title=?,report_concept=?,report_path=?,report_hash=?,error=NULL,completed_at=?,updated_at=? WHERE id=?",
-                (url, slug, title or video["title"], report_title, members[0]["report_concept"], str(target), report, stamp, stamp, video["id"]),
+                "UPDATE videos SET source_url=?,source_slug=?,title=?,status='analyzed',artifact_dir=?,report_title=?,report_concept=?,report_path=?,report_hash=?,category=?,error=NULL,completed_at=?,updated_at=? WHERE id=?",
+                (url, slug, title or video["title"], str(artifact_dir), report_title, members[0]["report_concept"], str(target), report, category, stamp, stamp, video["id"]),
             )
             video_id = video["id"]
         else:
             cur = conn.execute(
-                "INSERT INTO videos(source_key,source_url,source_slug,title,status,report_title,report_concept,report_path,report_hash,created_at,updated_at,completed_at) VALUES(?,?,?,?,'analyzed',?,?,?,?,?,?,?)",
-                (key, url, slug, title or url, report_title, members[0]["report_concept"], str(target), report, stamp, stamp, stamp),
+                "INSERT INTO videos(source_key,source_url,source_slug,title,status,artifact_dir,report_title,report_concept,report_path,report_hash,category,created_at,updated_at,completed_at) VALUES(?,?,?,?,'analyzed',?,?,?,?,?,?,?,?,?)",
+                (key, url, slug, title or url, str(artifact_dir), report_title, members[0]["report_concept"], str(target), report, category, stamp, stamp, stamp),
             )
             video_id = cur.lastrowid
-    emit(
-        {
+    payload = {
             "result": "attached",
             "video_id": video_id,
             "report_hash": report,
             "report_url": f"reports/{target.relative_to(REPORTS).as_posix()}",
         }
-    )
+    warning = category_warning(conn, category)
+    if warning:
+        payload["warning"] = warning
+    emit(payload)
 
 
 def normalize_reports():
@@ -393,7 +437,12 @@ def normalize_reports():
     for row in rows:
         identity = row["report_hash"]
         source = Path(row["report_path"])
-        target = REPORTS / f"{identity}.html"
+        category = conn.execute(
+            "SELECT category FROM videos WHERE report_hash=? LIMIT 1", (identity,)
+        ).fetchone()[0]
+        target_dir = REPORTS / category
+        target_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        target = target_dir / f"{identity}.html"
         if not source.is_file():
             raise SystemExit(f"registered report file is missing: {source}")
         target.write_bytes(with_report_identity(source, identity))
@@ -407,10 +456,67 @@ def normalize_reports():
             {
                 "report_hash": identity,
                 "previous": str(source),
-                "report_url": f"reports/{target.name}",
+                "report_url": f"reports/{target.relative_to(REPORTS).as_posix()}",
             }
         )
     emit({"result": "normalized", "reports": changed}, True)
+
+
+def move_report(report: str, category: str):
+    """Move a report into a real category directory and update its records."""
+    conn = db()
+    try:
+        category = normalize_category(category)
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="category") from error
+    rows = conn.execute(
+        "SELECT * FROM videos WHERE report_hash=? ORDER BY id", (report,)
+    ).fetchall()
+    if not rows:
+        raise SystemExit(f"report not found: {report}")
+    sources = {row["report_path"] for row in rows}
+    if len(sources) != 1:
+        raise SystemExit("report records disagree on file path")
+    source = Path(sources.pop())
+    if not source.is_file():
+        raise SystemExit(f"registered report file is missing: {source}")
+    directory = REPORTS / category
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = directory / f"{report}.html"
+    if source != target:
+        source.replace(target)
+        target.chmod(0o600)
+    with conn:
+        conn.execute(
+            "UPDATE videos SET category=?,report_path=?,updated_at=? WHERE report_hash=?",
+            (category, str(target), now(), report),
+        )
+    payload = {
+        "result": "moved",
+        "report_hash": report,
+        "category": category,
+        "report_url": f"reports/{target.relative_to(REPORTS).as_posix()}",
+    }
+    warning = category_warning(conn, category)
+    if warning:
+        payload["warning"] = warning
+    emit(payload)
+
+
+def category_tree(json_output: bool = typer.Option(False, "--json")):
+    """List real report directories and their report counts."""
+    conn = db()
+    rows = conn.execute(
+        "SELECT category,count(DISTINCT report_hash) AS reports FROM videos WHERE status='analyzed' GROUP BY category ORDER BY category"
+    ).fetchall()
+    payload = [dict(row) for row in rows]
+    if json_output:
+        emit(payload, True)
+    elif not payload:
+        print("No categories")
+    else:
+        for row in payload:
+            print(f'{row["category"]}\t{row["reports"]}')
 
 
 def invalidate_report(video: str, error: str = typer.Option(...)):
@@ -543,7 +649,11 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         if path.startswith("/reports/"):
-            self.file(REPORTS / Path(path).name)
+            candidate = (REPORTS / path.removeprefix("/reports/")).resolve()
+            if REPORTS.resolve() not in candidate.parents:
+                self.send_error(403)
+                return
+            self.file(candidate)
             return
         candidate = (WEB / (path.lstrip("/") or "index.html")).resolve()
         if WEB.resolve() not in candidate.parents and candidate != WEB.resolve():
@@ -568,11 +678,13 @@ queue_app = typer.Typer(help="Manage the video queue.", no_args_is_help=True)
 report_app = typer.Typer(help="Inspect and invalidate reports.", no_args_is_help=True)
 analyze_app = typer.Typer(help="Manage explicit analysis runs.", no_args_is_help=True)
 combine_app = typer.Typer(help="Prepare combined video analysis.", no_args_is_help=True)
+category_app = typer.Typer(help="Inspect report directories.", no_args_is_help=True)
 
 app.add_typer(queue_app, name="queue")
 app.add_typer(report_app, name="report")
 app.add_typer(analyze_app, name="analyze")
 app.add_typer(combine_app, name="combine")
+app.add_typer(category_app, name="category")
 
 
 @app.command("init")
@@ -600,14 +712,20 @@ app.command("show")(show)
 
 
 @report_app.command("list")
-def report_list(json_output: bool = typer.Option(False, "--json")):
+def report_list(
+    json_output: bool = typer.Option(False, "--json"),
+    category: Optional[str] = typer.Option(None),
+):
     """List completed reports."""
-    list_rows(json_output=json_output, report=True)
+    normalized = normalize_category(category) if category else None
+    list_rows(json_output=json_output, report=True, category=normalized)
 
 
 report_app.command("invalidate")(invalidate_report)
 report_app.command("add")(report_add)
 report_app.command("normalize")(normalize_reports)
+report_app.command("move")(move_report)
+category_app.command("tree")(category_tree)
 analyze_app.command("begin")(begin)
 analyze_app.command("complete")(complete)
 

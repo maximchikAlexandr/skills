@@ -44,3 +44,20 @@ export const statusPresentation = (status) => Object.freeze({
   analyzing: { label: 'Разбирается', color: 'cyan' },
   failed: { label: 'Не удалось', color: 'red' },
 }[status] ?? { label: status, color: 'gray' });
+
+export const categoryCounts = (reports) => Object.freeze(
+  [...reports.reduce((counts, { category = 'uncategorized' }) => {
+    const parts = category.split('/').filter(Boolean);
+    parts.forEach((_, index) => {
+      const path = parts.slice(0, index + 1).join('/');
+      counts.set(path, (counts.get(path) ?? 0) + 1);
+    });
+    return counts;
+  }, new Map())]
+    .map(([path, count]) => Object.freeze({ path, count, depth: path.split('/').length - 1 }))
+    .sort((left, right) => left.path.localeCompare(right.path)),
+);
+
+export const reportsInCategory = (reports, category) => (
+  category ? reports.filter(({ category: reportCategory = 'uncategorized' }) => reportCategory === category || reportCategory.startsWith(`${category}/`)) : reports
+);

@@ -12,6 +12,7 @@ import {
   Button,
   Card,
   Container,
+  Divider,
   Group,
   Image,
   Loader,
@@ -23,9 +24,9 @@ import {
   ThemeIcon,
   Title,
 } from '@mantine/core';
-import { IconAlertTriangle, IconArrowUpRight, IconClock, IconPlayerPlay, IconRefresh, IconVideo } from '@tabler/icons-react';
+import { IconAlertTriangle, IconArrowUpRight, IconChevronRight, IconClock, IconFolder, IconFolders, IconPlayerPlay, IconRefresh, IconVideo } from '@tabler/icons-react';
 
-import { catalogStats, EMPTY_CATALOG, normalizeCatalog, reportHref, statusPresentation, thumbnailUrl } from './catalog.js';
+import { categoryCounts, catalogStats, EMPTY_CATALOG, normalizeCatalog, reportHref, reportsInCategory, statusPresentation, thumbnailUrl } from './catalog.js';
 
 const theme = {
   primaryColor: 'teal',
@@ -74,8 +75,22 @@ const ReportCard = ({ report }) => {
   return (
     <Card className="report-card" withBorder padding={0} component="a" href={reportHref(report.report_url)}>
       <Box className="thumb">{thumbnail ? <Image src={thumbnail} alt="" h="100%" /> : <IconVideo size={42} /> }<ThemeIcon className="play" radius="xl" size="lg"><IconPlayerPlay size={18} /></ThemeIcon></Box>
-      <Stack gap={7} p="lg"><Group gap="xs"><Badge variant="light">{report.report_concept || 'video report'}</Badge>{report.source_count > 1 && <Badge color="violet" variant="light">{report.source_count} видео</Badge>}</Group><Title order={3} size="h4" lineClamp={2}>{report.report_title || report.title}</Title><Text size="sm" c="dimmed" lineClamp={2}>{report.title}</Text></Stack>
+      <Stack gap={7} p="lg"><Group gap="xs"><Badge variant="light">{report.report_concept || 'video report'}</Badge>{report.source_count > 1 && <Badge color="violet" variant="light">{report.source_count} видео</Badge>}</Group><Title order={3} size="h4" lineClamp={2}>{report.report_title || report.title}</Title><Text size="sm" c="dimmed" lineClamp={2}>{report.title}</Text><Group justify="space-between"><Text size="xs" c="dimmed">{report.category || 'uncategorized'}</Text><Text size="xs" ff="monospace" c="teal">{report.report_hash}</Text></Group></Stack>
     </Card>
+  );
+};
+
+const CategoryBrowser = ({ reports, selected, onSelect }) => {
+  const categories = categoryCounts(reports);
+  return (
+    <Paper withBorder className="category-browser">
+      <Group gap="xs" mb="sm"><ThemeIcon variant="light"><IconFolders size={18} /></ThemeIcon><Text fw={800}>Темы</Text></Group>
+      <Button fullWidth justify="space-between" variant={!selected ? 'light' : 'subtle'} onClick={() => onSelect('')} rightSection={<Badge size="sm" variant="transparent">{reports.length}</Badge>}>Все отчёты</Button>
+      <Divider my="xs" />
+      <Stack gap={2}>{categories.map(({ path, count, depth }) => (
+        <Button key={path} fullWidth justify="space-between" variant={selected === path ? 'light' : 'subtle'} color={selected === path ? 'teal' : 'gray'} onClick={() => onSelect(path)} className="category-button" style={{ paddingLeft: 12 + depth * 18 }} leftSection={depth ? <IconChevronRight size={14} /> : <IconFolder size={16} />} rightSection={<Badge size="sm" variant="transparent">{count}</Badge>}>{path.split('/').at(-1)}</Button>
+      ))}</Stack>
+    </Paper>
   );
 };
 
@@ -84,6 +99,8 @@ const Empty = ({ children }) => <Paper withBorder className="empty"><IconVideo s
 const App = () => {
   const { catalog, loading, error, reload } = useCatalog();
   const stats = useMemo(() => catalogStats(catalog), [catalog]);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const visibleReports = useMemo(() => reportsInCategory(catalog.reports, selectedCategory), [catalog.reports, selectedCategory]);
   return (
     <AppShell header={{ height: 64 }}>
       <AppShell.Header><Container size="xl" h="100%"><Group h="100%" justify="space-between"><Group gap="sm"><ThemeIcon radius="md" size="lg"><IconVideo size={21} /></ThemeIcon><Box><Text fw={850} lh={1}>VIDRA</Text><Text size="xs" c="dimmed">Очередь и готовые разборы</Text></Box></Group><Button variant="subtle" leftSection={loading ? <Loader size={15} /> : <IconRefresh size={16} />} onClick={reload} disabled={loading}>Обновить</Button></Group></Container></AppShell.Header>
@@ -91,7 +108,7 @@ const App = () => {
         <Group justify="space-between" align="flex-end" mb="xl"><Box><Text className="kicker">Видеобиблиотека</Text><Title order={1}>Разборы без повторной работы</Title><Text c="dimmed" mt={4}>Очередь, статусы обработки и доказательные отчёты.</Text></Box><SimpleGrid cols={4} spacing="xs" className="stats"><Stat label="В очереди" value={stats.queued} /><Stat label="В работе" value={stats.active} /><Stat label="Ошибки" value={stats.failed} /><Stat label="Отчёты" value={stats.reports} /></SimpleGrid></Group>
         {error && <Alert color="red" icon={<IconAlertTriangle size={18} />} mb="xl">{error}</Alert>}
         <section><Group justify="space-between" mb="md"><Title order={2}>Очередь</Title><Badge color="gray" variant="light">{catalog.queue.length}</Badge></Group>{catalog.queue.length ? <SimpleGrid cols={{ base: 1, md: 2 }}>{catalog.queue.map((video) => <QueueCard key={video.id} video={video} />)}</SimpleGrid> : <Empty>Очередь пуста</Empty>}</section>
-        <section className="reports"><Group justify="space-between" mb="md"><Title order={2}>Готовые отчёты</Title><Badge variant="light">{catalog.reports.length}</Badge></Group>{catalog.reports.length ? <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>{catalog.reports.map((report) => <ReportCard key={report.report_url} report={report} />)}</SimpleGrid> : <Empty>Отчётов пока нет</Empty>}</section>
+        <section className="reports"><Group justify="space-between" mb="md"><Box><Title order={2}>Готовые отчёты</Title>{selectedCategory && <Text size="sm" c="dimmed">{selectedCategory}</Text>}</Box><Badge variant="light">{visibleReports.length}</Badge></Group>{catalog.reports.length ? <div className="library"><CategoryBrowser reports={catalog.reports} selected={selectedCategory} onSelect={setSelectedCategory} /><Box>{visibleReports.length ? <SimpleGrid cols={{ base: 1, md: 2 }}>{visibleReports.map((report) => <ReportCard key={report.report_url} report={report} />)}</SimpleGrid> : <Empty>В этой теме отчётов нет</Empty>}</Box></div> : <Empty>Отчётов пока нет</Empty>}</section>
       </Container></AppShell.Main>
     </AppShell>
   );

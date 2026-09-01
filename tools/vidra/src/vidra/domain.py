@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 VIDEO_STATES = frozenset({"queued", "analyzing", "analyzed", "failed"})
+CATEGORY_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -53,14 +54,26 @@ def require_transition(current: str, target: str) -> None:
         raise ValueError(f"invalid video transition: {current} -> {target}")
 
 
-def report_slug(title: str, limit: int = 48) -> str:
-    words = "".join(char.lower() if char.isalnum() else " " for char in title).split()
-    return "-".join(words)[:limit] or "report"
-
-
 def report_hash(seed: bytes, source_keys: tuple[str, ...], created_at: str) -> str:
     """Return a short identifier that stays stable when a report is edited."""
     payload = b"\0".join(
         (seed, "\n".join(sorted(source_keys)).encode(), created_at.encode())
     )
     return sha256(payload).hexdigest()[:12]
+
+
+def normalize_category(value: str) -> str:
+    """Normalize a slash-separated category into a safe relative path."""
+    parts = []
+    for raw in value.strip(" /").split("/"):
+        part = "".join(
+            char.lower() if char.isascii() and char.isalnum() else "-" for char in raw
+        ).strip("-")
+        while "--" in part:
+            part = part.replace("--", "-")
+        if not part or part in {".", ".."}:
+            raise ValueError(f"invalid category segment: {raw!r}")
+        parts.append(part)
+    if not parts:
+        raise ValueError("category is required")
+    return "/".join(parts)

@@ -1,8 +1,27 @@
-# Reindexing an overcrowded project category
+# Choosing and reindexing project categories
 
-Read this reference when Vidra returns `project_category_reindex_required`.
-The warning is emitted when a leaf directory contains more than 15 project
-reports; it is a taxonomy maintenance signal, not a failed registration.
+Read this reference before registering a project and when Vidra returns
+`project_category_reindex_required`. A leaf may contain at most 15 projects.
+
+## Place a new project
+
+Inspect `vidra project category-tree` and relevant `vidra project list
+--category CATEGORY --json` results, then choose in this order:
+
+1. Use the most specific existing leaf that naturally describes the project's
+   primary responsibility.
+2. If none fits, inspect related leaves below the same parent with fewer than
+   15 projects. A leaf may be renamed to a broader durable subject only when
+   the new name stays within the parent's meaning and naturally describes every
+   existing project plus the new one. Move the existing reports with `vidra
+   project move`, then register the new project there.
+3. Create a new leaf only when neither reuse nor safe broadening works.
+
+Fewer directories is not sufficient justification. Reject vague buckets such
+as `misc` or `other`, and do not group by owner, language, popularity, date,
+report format, or a secondary implementation detail. Prefer the project's
+maintainer-stated primary purpose. Ask the user only when two materially
+different placements remain equally defensible.
 
 ## Decide the split from evidence
 

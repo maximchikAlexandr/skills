@@ -13,13 +13,14 @@ Never create or register a report without a real, non-empty transcript. If
 transcription fails, mark the run failed, retain the video in the queue, show
 the reason, and leave the report fields empty.
 
-Reports use a stable 12-character hash as their filename and lookup key. Put
-each new report in the narrowest existing real directory with `--category`;
-the initial top-level taxonomy is `ai`, `http`, and
-`functional-programming`. Do not create deeper structure until Vidra emits
-`category_reindex_required`. When it does, read
-[references/category-reindexing.md](references/category-reindexing.md) and
-follow that bounded reindexing workflow.
+Reports use a stable 12-character hash as their filename and lookup key. Before
+choosing `--category`, read
+[references/category-reindexing.md](references/category-reindexing.md). Reuse
+the best existing leaf first; when no exact leaf fits, prefer a safe broader
+rename of a related non-full leaf over creating another directory. Create a new
+leaf only when neither option keeps every report in the leaf coherent. Vidra
+emits `category_reindex_required` at 10 reports; use the same reference to split
+an overcrowded leaf.
 
 ## Choose the path
 

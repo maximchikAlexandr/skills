@@ -1,8 +1,27 @@
-# Reindexing an overcrowded report category
+# Choosing and reindexing video report categories
 
-Read this reference when Vidra returns `category_reindex_required`. The warning
-appears as soon as a directory reaches 10 reports, before the library becomes
-hard to scan.
+Read this reference before registering a report and when Vidra returns
+`category_reindex_required`. A leaf may contain at most 10 reports.
+
+## Place a new report
+
+Inspect `vidra category tree` and relevant `vidra report list --category
+CATEGORY --json` results, then choose in this order:
+
+1. Put the report in the most specific existing leaf where its primary subject
+   naturally belongs.
+2. Otherwise inspect related leaves below the same parent that contain fewer
+   than 10 reports. If one can be renamed to a broader durable subject without
+   leaving that parent, and every existing report plus the new report remains a
+   natural member, move those reports to the broader name and use it.
+3. Otherwise create one new leaf for the report.
+
+Do not broaden a category merely to save a directory. The new name must express
+one useful subject shared by every member; `misc`, `other`, formats, speakers,
+dates, and accidental technology overlap are not subjects. Never move a report
+outside the meaning of its parent. When more than one placement remains
+plausible, choose by the report's primary viewer outcome; ask the user only if
+that still leaves a material ambiguity.
 
 ## Decide the split from evidence
 

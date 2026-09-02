@@ -17,7 +17,10 @@ vidra queue add 'https://www.youtube.com/watch?v=...'
 vidra queue list
 vidra analyze begin VIDEO --user-approved
 vidra analyze fail VIDEO --error 'transcription unavailable'
+vidra report add-video REPORT_HASH 'https://www.youtube.com/watch?v=...'
 vidra report add REPORT_HASH VIDEO --transcript-file transcript.vtt --report-file updated.html
+vidra report additions REPORT_HASH
+vidra report validate REPORT_HASH
 vidra report normalize
 vidra report move REPORT_HASH ai/code-review
 vidra report list --category ai
@@ -28,8 +31,11 @@ vidra serve
 
 Completed reports use a stable 12-character hash as both their filename and
 lookup key. `report add` accepts that key, verifies the new video's transcript,
-replaces the report with the supplied expanded HTML, and associates the new
-video without reprocessing existing transcripts. `report normalize` upgrades
+validates that every source has a player, preserves a backup, atomically
+replaces the report with the supplied integrated HTML, and associates the new
+video without reprocessing existing transcripts. `report add-video` creates a
+resumable addition manifest and records its target report; `report additions`
+lists pending and completed additions. `report normalize` upgrades
 legacy filenames while preserving the old files on disk.
 
 Reports live in real slash-separated category directories. The web interface

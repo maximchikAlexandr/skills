@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -14,11 +15,12 @@ class CliFlowTests(TestCase):
         env = {**os.environ, "VIDRA_HOME": str(home)}
         result = subprocess.run(
             [sys.executable, "-m", "vidra.cli", *arguments],
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
             env=env,
         )
+        self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
     def test_queue_to_report_and_record_removal_preserves_files(self):
@@ -61,8 +63,25 @@ class CliFlowTests(TestCase):
 
             next_transcript = root / "next.vtt"
             next_transcript.write_text("new verified transcript " * 20, encoding="utf-8")
+            prepared = self.run_vidra(
+                root / "home",
+                "report",
+                "add-video",
+                completed["report_hash"],
+                "https://youtu.be/next456",
+                "--title",
+                "Next video",
+            )
+            self.assertEqual(prepared["result"], "addition_prepared")
+            self.assertTrue(Path(prepared["manifest"]).is_file())
             updated_report = root / "updated.html"
-            updated_report.write_text("<!doctype html><body>Updated</body>", encoding="utf-8")
+            updated_report.write_text(
+                '<!doctype html><body><a href="../">Все видео</a>'
+                '<iframe src="https://www.youtube.com/embed/flow123"></iframe>'
+                '<iframe src="https://www.youtube.com/embed/next456"></iframe>'
+                "Updated</body>",
+                encoding="utf-8",
+            )
             attached = self.run_vidra(
                 root / "home",
                 "report",
@@ -76,6 +95,24 @@ class CliFlowTests(TestCase):
             )
             self.assertEqual(attached["result"], "attached")
             self.assertIn("Updated", stored_report.read_text(encoding="utf-8"))
+            with sqlite3.connect(root / "home" / "vidra.sqlite3") as connection:
+                run_status = connection.execute(
+                    "SELECT status FROM runs WHERE video_id=? ORDER BY id DESC LIMIT 1",
+                    (prepared["video_id"],),
+                ).fetchone()[0]
+            self.assertEqual(run_status, "analyzed")
+            additions = self.run_vidra(
+                root / "home",
+                "report",
+                "additions",
+                completed["report_hash"],
+                "--json",
+            )
+            self.assertEqual([item["title"] for item in additions], ["Next video"])
+            validated = self.run_vidra(
+                root / "home", "report", "validate", completed["report_hash"]
+            )
+            self.assertEqual(validated["result"], "valid")
 
             moved = self.run_vidra(
                 root / "home",

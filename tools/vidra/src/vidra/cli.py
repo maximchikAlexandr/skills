@@ -21,6 +21,7 @@ from .domain import (
     normalize_category,
     normalize_source,
     report_hash,
+    report_validation_errors,
     require_transition,
 )
 
@@ -72,6 +73,8 @@ def db():
         conn.execute("ALTER TABLE videos ADD COLUMN report_hash TEXT")
     if "category" not in columns:
         conn.execute("ALTER TABLE videos ADD COLUMN category TEXT NOT NULL DEFAULT 'uncategorized'")
+    if "target_report_hash" not in columns:
+        conn.execute("ALTER TABLE videos ADD COLUMN target_report_hash TEXT")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS videos_report_hash_idx ON videos(report_hash)"
     )
@@ -451,6 +454,12 @@ def report_add(
     key, url, slug = source_key(source)
     video = conn.execute("SELECT * FROM videos WHERE source_key=?", (key,)).fetchone()
     if video and video["report_hash"] == report:
+        stamp = now()
+        with conn:
+            conn.execute(
+                "UPDATE runs SET status='analyzed',finished_at=?,error=NULL WHERE id=(SELECT id FROM runs WHERE video_id=? AND status='analyzing' ORDER BY id DESC LIMIT 1)",
+                (stamp, video["id"]),
+            )
         emit({"result": "already_attached", "video": view(video)})
         return
     if video and video["report_hash"]:
@@ -458,8 +467,6 @@ def report_add(
     target = Path(members[0]["report_path"])
     if not target.is_file():
         raise SystemExit(f"registered report file is missing: {target}")
-    target.write_bytes(with_report_identity(updated, report))
-    target.chmod(0o600)
     artifact_dir = ARTIFACTS / slug
     transcript_dir = artifact_dir / "transcription"
     transcript_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -467,32 +474,208 @@ def report_add(
     if transcript != stored_transcript:
         stored_transcript.write_bytes(transcript.read_bytes())
         stored_transcript.chmod(0o600)
+    rendered = with_report_identity(updated, report)
+    covered_ids = tuple(
+        dict.fromkeys([row["source_slug"] for row in members] + [slug])
+    )
+    errors = report_validation_errors(rendered.decode("utf-8"), covered_ids, report)
+    if errors:
+        raise SystemExit("invalid updated report: " + ", ".join(errors))
     stamp = now()
+    backup = artifact_dir / f'report-before-addition-{stamp.replace(":", "-")}.html'
+    backup.write_bytes(target.read_bytes())
+    backup.chmod(0o600)
+    temporary = target.with_name(f".{target.name}.tmp")
+    temporary.write_bytes(rendered)
+    temporary.chmod(0o600)
+    os.replace(temporary, target)
     report_title = members[0]["report_title"]
     category = members[0]["category"]
     with conn:
         if video:
             conn.execute(
-                "UPDATE videos SET source_url=?,source_slug=?,title=?,status='analyzed',artifact_dir=?,report_title=?,report_concept=?,report_path=?,report_hash=?,category=?,error=NULL,completed_at=?,updated_at=? WHERE id=?",
-                (url, slug, title or video["title"], str(artifact_dir), report_title, members[0]["report_concept"], str(target), report, category, stamp, stamp, video["id"]),
+                "UPDATE videos SET source_url=?,source_slug=?,title=?,status='analyzed',artifact_dir=?,report_title=?,report_concept=?,report_path=?,report_hash=?,target_report_hash=?,category=?,error=NULL,completed_at=?,updated_at=? WHERE id=?",
+                (url, slug, title or video["title"], str(artifact_dir), report_title, members[0]["report_concept"], str(target), report, report, category, stamp, stamp, video["id"]),
             )
             video_id = video["id"]
         else:
             cur = conn.execute(
-                "INSERT INTO videos(source_key,source_url,source_slug,title,status,artifact_dir,report_title,report_concept,report_path,report_hash,category,created_at,updated_at,completed_at) VALUES(?,?,?,?,'analyzed',?,?,?,?,?,?,?,?,?)",
-                (key, url, slug, title or url, str(artifact_dir), report_title, members[0]["report_concept"], str(target), report, category, stamp, stamp, stamp),
+                "INSERT INTO videos(source_key,source_url,source_slug,title,status,artifact_dir,report_title,report_concept,report_path,report_hash,target_report_hash,category,created_at,updated_at,completed_at) VALUES(?,?,?,?,'analyzed',?,?,?,?,?,?,?,?,?,?)",
+                (key, url, slug, title or url, str(artifact_dir), report_title, members[0]["report_concept"], str(target), report, report, category, stamp, stamp, stamp),
             )
             video_id = cur.lastrowid
+        conn.execute(
+            "UPDATE runs SET status='analyzed',finished_at=?,error=NULL WHERE id=(SELECT id FROM runs WHERE video_id=? AND status='analyzing' ORDER BY id DESC LIMIT 1)",
+            (stamp, video_id),
+        )
     payload = {
             "result": "attached",
             "video_id": video_id,
             "report_hash": report,
             "report_url": f"reports/{target.relative_to(REPORTS).as_posix()}",
+            "backup": str(backup),
         }
     warning = category_warning(conn, category)
     if warning:
         payload["warning"] = warning
     emit(payload)
+
+
+def report_add_video(
+    report: str,
+    source: str,
+    title: Optional[str] = typer.Option(None),
+):
+    """Prepare one explicit, resumable video addition to an existing report."""
+    conn = db()
+    members = conn.execute(
+        "SELECT * FROM videos WHERE report_hash=? ORDER BY id", (report,)
+    ).fetchall()
+    if not members:
+        raise SystemExit(f"report not found: {report}")
+    key, url, slug = source_key(source)
+    existing = conn.execute("SELECT * FROM videos WHERE source_key=?", (key,)).fetchone()
+    if existing and existing["report_hash"] == report:
+        emit({"result": "already_attached", "video": view(existing)})
+        return
+    if existing and existing["report_hash"]:
+        raise SystemExit(f'video already belongs to report {existing["report_hash"]}')
+    if (
+        existing
+        and existing["status"] == "analyzing"
+        and existing["target_report_hash"] == report
+    ):
+        emit({"result": "already_prepared", "video": view(existing)})
+        return
+    artifact_dir = ARTIFACTS / slug
+    transcript_dir = artifact_dir / "transcription"
+    transcript_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    stamp = now()
+    with conn:
+        if existing:
+            conn.execute(
+                "UPDATE videos SET source_url=?,source_slug=?,title=?,request=?,status='analyzing',artifact_dir=?,target_report_hash=?,report_title=NULL,report_concept=NULL,report_path=NULL,report_hash=NULL,category='uncategorized',error=NULL,started_at=?,completed_at=NULL,updated_at=? WHERE id=?",
+                (
+                    url,
+                    slug,
+                    title or existing["title"],
+                    f"Add to report {report}",
+                    str(artifact_dir),
+                    report,
+                    stamp,
+                    stamp,
+                    existing["id"],
+                ),
+            )
+            video_id = existing["id"]
+        else:
+            cursor = conn.execute(
+                "INSERT INTO videos(source_key,source_url,source_slug,title,request,status,artifact_dir,target_report_hash,created_at,updated_at,started_at) VALUES(?,?,?,?,?,'analyzing',?,?,?,?,?)",
+                (
+                    key,
+                    url,
+                    slug,
+                    title or url,
+                    f"Add to report {report}",
+                    str(artifact_dir),
+                    report,
+                    stamp,
+                    stamp,
+                    stamp,
+                ),
+            )
+            video_id = cursor.lastrowid
+        run = conn.execute(
+            "INSERT INTO runs(video_id,status,started_at) VALUES(?,'analyzing',?)",
+            (video_id, stamp),
+        )
+    manifest = artifact_dir / "addition.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "kind": "report-video-addition",
+                "report_hash": report,
+                "report_path": members[0]["report_path"],
+                "video_id": video_id,
+                "source_url": url,
+                "source_slug": slug,
+                "transcript_dir": str(transcript_dir),
+                "authoring_contract": "skills/education/video-analyzer/references/report-authoring.md#extending-an-existing-report",
+                "created_at": stamp,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest.chmod(0o600)
+    emit(
+        {
+            "result": "addition_prepared",
+            "video_id": video_id,
+            "run_id": run.lastrowid,
+            "report_hash": report,
+            "source_url": url,
+            "artifact_dir": str(artifact_dir),
+            "manifest": str(manifest),
+            "next": "obtain a verified transcript, integrate the source into the report narrative, then run `vidra report add`",
+        }
+    )
+
+
+def report_additions(
+    report: str,
+    json_output: bool = typer.Option(False, "--json"),
+):
+    """List videos prepared for or added to a report."""
+    rows = [
+        view(row)
+        for row in db().execute(
+            "SELECT * FROM videos WHERE target_report_hash=? ORDER BY created_at",
+            (report,),
+        )
+    ]
+    if json_output:
+        emit(rows, True)
+    elif not rows:
+        print("No additions")
+    else:
+        for row in rows:
+            print(
+                f'{row["id"]}\t{row["status"]}\t{row["title"]}\t{row["source_url"]}'
+            )
+
+
+def validate_report(report: str):
+    """Validate report identity, sources, players, and timestamp pairs."""
+    conn = db()
+    rows = conn.execute(
+        "SELECT * FROM videos WHERE report_hash=? ORDER BY id", (report,)
+    ).fetchall()
+    if not rows:
+        raise SystemExit(f"report not found: {report}")
+    paths = {row["report_path"] for row in rows}
+    if len(paths) != 1:
+        raise SystemExit("report records disagree on file path")
+    path = Path(paths.pop())
+    errors = report_validation_errors(
+        path.read_text(encoding="utf-8"),
+        tuple(row["source_slug"] for row in rows),
+        report,
+    )
+    emit(
+        {
+            "result": "valid" if not errors else "invalid",
+            "report_hash": report,
+            "sources": len(rows),
+            "errors": list(errors),
+        },
+        True,
+    )
+    if errors:
+        raise typer.Exit(1)
 
 
 def normalize_reports():
@@ -791,6 +974,9 @@ def report_list(
 
 report_app.command("invalidate")(invalidate_report)
 report_app.command("add")(report_add)
+report_app.command("add-video")(report_add_video)
+report_app.command("additions")(report_additions)
+report_app.command("validate")(validate_report)
 report_app.command("normalize")(normalize_reports)
 report_app.command("move")(move_report)
 category_app.command("tree")(category_tree)

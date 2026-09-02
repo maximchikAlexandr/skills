@@ -4,9 +4,11 @@ I/O belongs in ``storage`` and ``cli``. Keeping normalization and transition
 rules here makes the behavior deterministic and easy to test.
 """
 
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 VIDEO_STATES = frozenset({"queued", "analyzing", "analyzed", "failed"})
@@ -77,3 +79,26 @@ def normalize_category(value: str) -> str:
     if not parts:
         raise ValueError("category is required")
     return "/".join(parts)
+
+
+def report_validation_errors(
+    html: str, video_ids: tuple[str, ...], identity: Optional[str] = None
+) -> tuple[str, ...]:
+    """Return deterministic structural errors for a candidate combined report."""
+    errors = []
+    if re.search(r"\{\{[A-Z][A-Z0-9_]*\}\}", html):
+        errors.append("unresolved_template_placeholder")
+    if not re.search(r"<a\b[^>]*>[^<]*(?:Все видео|All videos)[^<]*</a>", html, re.I):
+        errors.append("missing_library_link")
+    for video_id in dict.fromkeys(video_ids):
+        if f"/embed/{video_id}" not in html:
+            errors.append(f"missing_player:{video_id}")
+    timestamp_links = len(re.findall(r'class=["\'][^"\']*\bts\b', html))
+    youtube_links = len(re.findall(r'class=["\'][^"\']*\byt\b', html))
+    if timestamp_links != youtube_links:
+        errors.append(f"timestamp_pair_mismatch:{timestamp_links}:{youtube_links}")
+    if identity is not None:
+        marker = 'data-vidra-report-id="true"'
+        if html.count(marker) != 1 or identity not in html:
+            errors.append("invalid_report_identity")
+    return tuple(errors)

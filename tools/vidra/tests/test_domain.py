@@ -6,6 +6,7 @@ from vidra.domain import (
     normalize_category,
     normalize_source,
     report_hash,
+    report_validation_errors,
     require_transition,
 )
 
@@ -44,3 +45,16 @@ class DomainTests(TestCase):
         self.assertEqual(normalize_category("AI / Code Review"), "ai/code-review")
         with self.assertRaisesRegex(ValueError, "invalid category"):
             normalize_category("ai/../review")
+
+    def test_report_validation_is_pure_and_checks_every_source(self):
+        html = (
+            '<a href="../">Все видео</a>'
+            '<iframe src="https://www.youtube.com/embed/a"></iframe>'
+            '<a class="ts">00:10</a><a class="yt">▶</a>'
+            '<span data-vidra-report-id="true">hash123</span>'
+        )
+        self.assertEqual(report_validation_errors(html, ("a",), "hash123"), ())
+        self.assertEqual(
+            report_validation_errors(html, ("a", "b"), "hash123"),
+            ("missing_player:b",),
+        )

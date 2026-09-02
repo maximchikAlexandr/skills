@@ -131,14 +131,31 @@ class CliFlowTests(TestCase):
                 "Knowledge platform",
                 "--stars",
                 "1900",
+                "--category",
+                "knowledge/platforms",
             )
             project = registered["project"]
             self.assertEqual(project["repository_key"], "deeplethe/utopia")
             self.assertRegex(project["report_hash"], r"^[0-9a-f]{12}$")
+            self.assertEqual(project["category"], "knowledge/platforms")
             stored = root / "home" / project["report_url"]
             self.assertTrue(stored.is_file())
             self.assertIn("Все проекты", stored.read_text(encoding="utf-8"))
+            self.assertIn(
+                'href="../../../#projects"', stored.read_text(encoding="utf-8")
+            )
+            moved = self.run_vidra(
+                root / "home",
+                "project",
+                "move",
+                project["report_hash"],
+                "knowledge/tools",
+            )
+            moved_report = root / "home" / moved["report_url"]
+            self.assertTrue(moved_report.is_file())
+            self.assertFalse(stored.exists())
             listed = self.run_vidra(root / "home", "project", "list", "--json")
             self.assertEqual(
                 [item["report_hash"] for item in listed], [project["report_hash"]]
             )
+            self.assertEqual(listed[0]["category"], "knowledge/tools")

@@ -26,7 +26,7 @@ import {
 } from '@mantine/core';
 import { IconAlertTriangle, IconArrowUpRight, IconBrandGithub, IconChevronRight, IconClock, IconFolder, IconFolders, IconPlayerPlay, IconRefresh, IconVideo } from '@tabler/icons-react';
 
-import { categoryCounts, categoryLabel, catalogStats, EMPTY_CATALOG, normalizeCatalog, reportHref, reportsInCategory, repositoryLabel, statusPresentation, thumbnailUrl } from './catalog.js';
+import { categoryCounts, categoryLabel, catalogStats, EMPTY_CATALOG, itemsInCategory, normalizeCatalog, reportHref, reportsInCategory, repositoryLabel, statusPresentation, thumbnailUrl } from './catalog.js';
 
 const theme = {
   primaryColor: 'teal',
@@ -91,12 +91,12 @@ const ProjectCard = ({ project }) => {
   );
 };
 
-const CategoryBrowser = ({ reports, selected, onSelect }) => {
-  const categories = categoryCounts(reports);
+const CategoryBrowser = ({ items, selected, onSelect, allLabel = 'Все отчёты' }) => {
+  const categories = categoryCounts(items);
   return (
     <Paper withBorder className="category-browser">
       <Group gap="xs" mb="sm"><ThemeIcon variant="light"><IconFolders size={18} /></ThemeIcon><Text fw={800}>Темы</Text></Group>
-      <Button fullWidth justify="space-between" variant={!selected ? 'light' : 'subtle'} onClick={() => onSelect('')} rightSection={<Badge size="sm" variant="transparent">{reports.length}</Badge>}>Все отчёты</Button>
+      <Button fullWidth justify="space-between" variant={!selected ? 'light' : 'subtle'} onClick={() => onSelect('')} rightSection={<Badge size="sm" variant="transparent">{items.length}</Badge>}>{allLabel}</Button>
       <Divider my="xs" />
       <Stack gap={2}>{categories.map(({ path, count, depth }) => (
         <Button key={path} fullWidth justify="space-between" variant={selected === path ? 'light' : 'subtle'} color={selected === path ? 'teal' : 'gray'} onClick={() => onSelect(path)} className="category-button" style={{ paddingLeft: 12 + depth * 18 }} leftSection={depth ? <IconChevronRight size={14} /> : <IconFolder size={16} />} rightSection={<Badge size="sm" variant="transparent">{count}</Badge>}>{categoryLabel(path)}</Button>
@@ -111,7 +111,9 @@ const App = () => {
   const { catalog, loading, error, reload } = useCatalog();
   const stats = useMemo(() => catalogStats(catalog), [catalog]);
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedProjectCategory, setSelectedProjectCategory] = useState('');
   const visibleReports = useMemo(() => reportsInCategory(catalog.reports, selectedCategory), [catalog.reports, selectedCategory]);
+  const visibleProjects = useMemo(() => itemsInCategory(catalog.projects, selectedProjectCategory), [catalog.projects, selectedProjectCategory]);
   return (
     <AppShell header={{ height: 64 }}>
       <AppShell.Header><Container size="xl" h="100%"><Group h="100%" justify="space-between" wrap="nowrap"><Group gap="sm" wrap="nowrap"><ThemeIcon radius="md" size="lg"><IconFolders size={21} /></ThemeIcon><Box><Text fw={850} lh={1}>VIDRA</Text><Text size="xs" c="dimmed">Каталог аналитических отчётов</Text></Box></Group><Button className="refresh-button" variant="subtle" leftSection={loading ? <Loader size={15} /> : <IconRefresh size={16} />} onClick={reload} disabled={loading}>Обновить</Button></Group></Container></AppShell.Header>
@@ -119,8 +121,8 @@ const App = () => {
         <Group className="hero" justify="space-between" align="flex-end" mb="xl"><Box className="hero-copy"><Text className="kicker">Библиотека знаний</Text><Title order={1}>Видео и GitHub-проекты</Title><Text c="dimmed" mt={4}>Очередь источников и проверяемые HTML-разборы.</Text></Box><SimpleGrid cols={5} spacing="xs" className="stats"><Stat label="В очереди" value={stats.queued} /><Stat label="В работе" value={stats.active} /><Stat label="Ошибки" value={stats.failed} /><Stat label="Видео" value={stats.reports} /><Stat label="Проекты" value={stats.projects} /></SimpleGrid></Group>
         {error && <Alert color="red" icon={<IconAlertTriangle size={18} />} mb="xl">{error}</Alert>}
         <section><Group justify="space-between" mb="md"><Title order={2}>Очередь</Title><Badge color="gray" variant="light">{catalog.queue.length}</Badge></Group>{catalog.queue.length ? <SimpleGrid cols={{ base: 1, md: 2 }}>{catalog.queue.map((video) => <QueueCard key={video.id} video={video} />)}</SimpleGrid> : <Empty>Очередь пуста</Empty>}</section>
-        <section className="reports"><Group justify="space-between" mb="md"><Box><Title order={2}>Готовые отчёты</Title>{selectedCategory && <Text size="sm" c="dimmed">{categoryLabel(selectedCategory)}</Text>}</Box><Badge variant="light">{visibleReports.length}</Badge></Group>{catalog.reports.length ? <div className="library"><CategoryBrowser reports={catalog.reports} selected={selectedCategory} onSelect={setSelectedCategory} /><Box>{visibleReports.length ? <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>{visibleReports.map((report) => <ReportCard key={report.report_url} report={report} />)}</SimpleGrid> : <Empty>В этой теме отчётов нет</Empty>}</Box></div> : <Empty>Отчётов пока нет</Empty>}</section>
-        <section className="reports" id="projects"><Group justify="space-between" mb="md"><Box><Title order={2}>Разборы GitHub-проектов</Title><Text size="sm" c="dimmed">Один проект — один самостоятельный отчёт</Text></Box><Badge color="dark" variant="light">{catalog.projects.length}</Badge></Group>{catalog.projects.length ? <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>{catalog.projects.map((project) => <ProjectCard key={project.repository_key} project={project} />)}</SimpleGrid> : <Empty>Разборов проектов пока нет</Empty>}</section>
+        <section className="reports"><Group justify="space-between" mb="md"><Box><Title order={2}>Готовые отчёты</Title>{selectedCategory && <Text size="sm" c="dimmed">{categoryLabel(selectedCategory)}</Text>}</Box><Badge variant="light">{visibleReports.length}</Badge></Group>{catalog.reports.length ? <div className="library"><CategoryBrowser items={catalog.reports} selected={selectedCategory} onSelect={setSelectedCategory} /><Box>{visibleReports.length ? <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>{visibleReports.map((report) => <ReportCard key={report.report_url} report={report} />)}</SimpleGrid> : <Empty>В этой теме отчётов нет</Empty>}</Box></div> : <Empty>Отчётов пока нет</Empty>}</section>
+        <section className="reports" id="projects"><Group justify="space-between" mb="md"><Box><Title order={2}>Разборы GitHub-проектов</Title>{selectedProjectCategory ? <Text size="sm" c="dimmed">{categoryLabel(selectedProjectCategory)}</Text> : <Text size="sm" c="dimmed">Один проект — один самостоятельный отчёт</Text>}</Box><Badge color="dark" variant="light">{visibleProjects.length}</Badge></Group>{catalog.projects.length ? <div className="library"><CategoryBrowser items={catalog.projects} selected={selectedProjectCategory} onSelect={setSelectedProjectCategory} allLabel="Все проекты" /><Box>{visibleProjects.length ? <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>{visibleProjects.map((project) => <ProjectCard key={project.repository_key} project={project} />)}</SimpleGrid> : <Empty>В этой теме проектов нет</Empty>}</Box></div> : <Empty>Разборов проектов пока нет</Empty>}</section>
       </Container></AppShell.Main>
     </AppShell>
   );

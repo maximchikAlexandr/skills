@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 
 VIDEO_STATES = frozenset({"queued", "analyzing", "analyzed", "failed"})
 CATEGORY_LIMIT = 10
+PROJECT_CATEGORY_LIMIT = 15
 
 
 @dataclass(frozen=True)

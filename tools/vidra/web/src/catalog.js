@@ -63,9 +63,11 @@ export const categoryCounts = (reports) => Object.freeze(
     .sort((left, right) => left.path.localeCompare(right.path)),
 );
 
-export const reportsInCategory = (reports, category) => (
-  category ? reports.filter(({ category: reportCategory = 'uncategorized' }) => reportCategory === category || reportCategory.startsWith(`${category}/`)) : reports
+export const itemsInCategory = (items, category) => (
+  category ? items.filter(({ category: itemCategory = 'uncategorized' }) => itemCategory === category || itemCategory.startsWith(`${category}/`)) : items
 );
+
+export const reportsInCategory = itemsInCategory;
 
 const CATEGORY_LABELS = Object.freeze({
   ai: 'AI',

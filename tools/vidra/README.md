@@ -8,7 +8,8 @@ Register a completed GitHub report:
 
 ```bash
 vidra project register owner/repository --report-file report.html \
-  --title "Project" --revision COMMIT_SHA --summary "Short description" --stars 123
+  --title "Project" --revision COMMIT_SHA --summary "Short description" --stars 123 \
+  --category developer-tools/example
 ```
 
 The command validates the GitHub identity, assigns a stable 12-character report
@@ -58,6 +59,11 @@ Reports live in real slash-separated category directories. The web interface
 renders those directories as a navigable hierarchy. Vidra warns when a leaf
 directory reaches 10 reports; follow the skill's `category-reindexing.md`
 workflow and use `report move` so the filesystem and SQLite stay consistent.
+
+GitHub project reports use the same real-directory model under `projects/`.
+Use `vidra project list --category ...`, `vidra project move HASH CATEGORY`, and
+`vidra project category-tree`. Registration warns after a project leaf exceeds
+15 reports and links to the project-analysis reindexing instructions.
 
 ## Web interface
 

@@ -18,6 +18,7 @@ import typer
 
 from .domain import (
     CATEGORY_LIMIT,
+    PROJECT_CATEGORY_LIMIT,
     normalize_category,
     normalize_github_repository,
     normalize_source,
@@ -81,6 +82,11 @@ def db():
         )
     if "target_report_hash" not in columns:
         conn.execute("ALTER TABLE videos ADD COLUMN target_report_hash TEXT")
+    project_columns = {row[1] for row in conn.execute("PRAGMA table_info(projects)")}
+    if "category" not in project_columns:
+        conn.execute(
+            "ALTER TABLE projects ADD COLUMN category TEXT NOT NULL DEFAULT 'uncategorized'"
+        )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS videos_report_hash_idx ON videos(report_hash)"
     )
@@ -238,7 +244,13 @@ def with_report_identity(
     return html.encode("utf-8")
 
 
-def with_project_navigation(source: Path) -> bytes:
+def project_library_href(report_path: Path) -> str:
+    """Return a relative link from a categorized project report to the catalog."""
+    relative = report_path.resolve().relative_to(PROJECT_REPORTS.resolve())
+    return "../" * len(relative.parts) + "#projects"
+
+
+def with_project_navigation(source: Path, catalog_href: str = "../#projects") -> bytes:
     """Inject an idempotent link from a project report to the project catalog."""
     html = source.read_text(encoding="utf-8")
     html = re.sub(
@@ -248,7 +260,7 @@ def with_project_navigation(source: Path) -> bytes:
         flags=re.IGNORECASE | re.DOTALL,
     )
     link = (
-        '<a data-vidra-projects-link="true" href="../#projects" '
+        f'<a data-vidra-projects-link="true" href="{catalog_href}" '
         'style="display:inline-flex;align-items:center;gap:7px;margin:16px;'
         "padding:8px 12px;border:1px solid currentColor;border-radius:7px;"
         'font:600 13px/1.2 system-ui,sans-serif;color:#315b55;text-decoration:none">'
@@ -263,9 +275,26 @@ def with_project_navigation(source: Path) -> bytes:
 
 def project_view(row):
     item = dict(row)
-    item.pop("report_path", None)
-    item["report_url"] = f"projects/{item['report_hash']}.html"
+    report_path = Path(item.pop("report_path"))
+    item["report_url"] = (
+        f"projects/{report_path.relative_to(PROJECT_REPORTS).as_posix()}"
+    )
     return item
+
+
+def project_category_warning(conn, category):
+    count = conn.execute(
+        "SELECT count(*) FROM projects WHERE category=?", (category,)
+    ).fetchone()[0]
+    if count <= PROJECT_CATEGORY_LIMIT:
+        return None
+    return {
+        "code": "project_category_reindex_required",
+        "category": category,
+        "project_count": count,
+        "limit": PROJECT_CATEGORY_LIMIT,
+        "instructions": "skills/education/discover-github-projects/references/category-reindexing.md",
+    }
 
 
 def project_register(
@@ -276,6 +305,7 @@ def project_register(
     summary: str = typer.Option(""),
     stars: Optional[int] = typer.Option(None),
     preview_file: Optional[Path] = typer.Option(None),
+    category: str = typer.Option("uncategorized"),
     replace: bool = typer.Option(False),
 ):
     """Register one completed GitHub project report in the shared catalog."""
@@ -286,6 +316,10 @@ def project_register(
     source = report_file.expanduser().resolve()
     if not source.is_file() or source.suffix.lower() != ".html":
         raise SystemExit("--report-file must be an existing HTML file")
+    try:
+        category = normalize_category(category)
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="--category") from error
     conn = db()
     existing = conn.execute(
         "SELECT * FROM projects WHERE repository_key=? COLLATE NOCASE", (repo.key,)
@@ -294,8 +328,10 @@ def project_register(
         emit({"result": "already_registered", "project": project_view(existing)})
         return
     identity = project_report_hash(repo.key, revision)
-    target = PROJECT_REPORTS / f"{identity}.html"
-    target.write_bytes(with_project_navigation(source))
+    target_dir = PROJECT_REPORTS / category
+    target_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = target_dir / f"{identity}.html"
+    target.write_bytes(with_project_navigation(source, project_library_href(target)))
     target.chmod(0o600)
     stamp = now()
     preview = f"https://opengraph.githubassets.com/{identity}/{repo.owner}/{repo.name}"
@@ -306,19 +342,19 @@ def project_register(
         suffix = preview_source.suffix.lower()
         if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
             raise SystemExit("--preview-file must be PNG, JPEG, or WebP")
-        preview_target = PROJECT_REPORTS / f"{identity}{suffix}"
+        preview_target = target_dir / f"{identity}{suffix}"
         preview_target.write_bytes(preview_source.read_bytes())
         preview_target.chmod(0o600)
-        preview = f"projects/{preview_target.name}"
+        preview = f"projects/{preview_target.relative_to(PROJECT_REPORTS).as_posix()}"
     with conn:
         conn.execute(
             "INSERT OR IGNORE INTO project_registry(repository_key,repository_url,display_name,first_seen_at) VALUES(?,?,?,?)",
             (repo.key, repo.url, title, stamp),
         )
         conn.execute(
-            """INSERT INTO projects(repository_key,repository_url,owner,name,title,summary,stars,revision,report_hash,report_path,preview_url,created_at,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(repository_key) DO UPDATE SET repository_url=excluded.repository_url,owner=excluded.owner,name=excluded.name,title=excluded.title,summary=excluded.summary,stars=excluded.stars,revision=excluded.revision,report_hash=excluded.report_hash,report_path=excluded.report_path,preview_url=excluded.preview_url,updated_at=excluded.updated_at""",
+            """INSERT INTO projects(repository_key,repository_url,owner,name,title,summary,stars,revision,report_hash,report_path,preview_url,category,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(repository_key) DO UPDATE SET repository_url=excluded.repository_url,owner=excluded.owner,name=excluded.name,title=excluded.title,summary=excluded.summary,stars=excluded.stars,revision=excluded.revision,report_hash=excluded.report_hash,report_path=excluded.report_path,preview_url=excluded.preview_url,category=excluded.category,updated_at=excluded.updated_at""",
             (
                 repo.key,
                 repo.url,
@@ -331,28 +367,37 @@ def project_register(
                 identity,
                 str(target),
                 preview,
+                category,
                 stamp,
                 stamp,
             ),
         )
-    emit(
-        {
-            "result": "registered" if not existing else "replaced",
-            "project": project_view(
-                conn.execute(
-                    "SELECT * FROM projects WHERE repository_key=?", (repo.key,)
-                ).fetchone()
-            ),
-        },
-        True,
-    )
+    payload = {
+        "result": "registered" if not existing else "replaced",
+        "project": project_view(
+            conn.execute(
+                "SELECT * FROM projects WHERE repository_key=?", (repo.key,)
+            ).fetchone()
+        ),
+    }
+    warning = project_category_warning(conn, category)
+    if warning:
+        payload["warning"] = warning
+    emit(payload, True)
 
 
-def project_list(json_output: bool = typer.Option(False, "--json")):
+def project_list(
+    json_output: bool = typer.Option(False, "--json"),
+    category: Optional[str] = typer.Option(None),
+):
     """List registered GitHub project reports."""
+    normalized = normalize_category(category) if category else None
     rows = [
         project_view(row)
-        for row in db().execute("SELECT * FROM projects ORDER BY updated_at DESC")
+        for row in db().execute(
+            "SELECT * FROM projects WHERE (? IS NULL OR category=?) ORDER BY updated_at DESC",
+            (normalized, normalized),
+        )
     ]
     if json_output:
         emit(rows, True)
@@ -360,7 +405,78 @@ def project_list(json_output: bool = typer.Option(False, "--json")):
         print("No project reports")
     else:
         for row in rows:
-            print(f"{row['report_hash']}\t{row['repository_key']}\t{row['title']}")
+            print(
+                f"{row['report_hash']}\t{row['category']}\t{row['repository_key']}\t{row['title']}"
+            )
+
+
+def project_move(report: str, category: str):
+    """Move a project report and its preview into a real category directory."""
+    conn = db()
+    try:
+        category = normalize_category(category)
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="category") from error
+    row = conn.execute(
+        "SELECT * FROM projects WHERE report_hash=?", (report,)
+    ).fetchone()
+    if row is None:
+        raise SystemExit(f"project report not found: {report}")
+    source = Path(row["report_path"])
+    if not source.is_file():
+        raise SystemExit(f"registered project report file is missing: {source}")
+    directory = PROJECT_REPORTS / category
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = directory / f"{report}.html"
+    if source != target:
+        source.replace(target)
+    target.write_bytes(with_project_navigation(target, project_library_href(target)))
+    target.chmod(0o600)
+    preview_url = row["preview_url"]
+    if preview_url.startswith("projects/"):
+        preview_source = PROJECT_REPORTS / preview_url.removeprefix("projects/")
+        if preview_source.is_file():
+            preview_target = directory / preview_source.name
+            if preview_source != preview_target:
+                preview_source.replace(preview_target)
+            preview_target.chmod(0o600)
+            preview_url = (
+                f"projects/{preview_target.relative_to(PROJECT_REPORTS).as_posix()}"
+            )
+    with conn:
+        conn.execute(
+            "UPDATE projects SET category=?,report_path=?,preview_url=?,updated_at=? WHERE report_hash=?",
+            (category, str(target), preview_url, now(), report),
+        )
+    payload = {
+        "result": "moved",
+        "report_hash": report,
+        "category": category,
+        "report_url": f"projects/{target.relative_to(PROJECT_REPORTS).as_posix()}",
+    }
+    warning = project_category_warning(conn, category)
+    if warning:
+        payload["warning"] = warning
+    emit(payload, True)
+
+
+def project_category_tree(json_output: bool = typer.Option(False, "--json")):
+    """List real project-report directories and their project counts."""
+    rows = (
+        db()
+        .execute(
+            "SELECT category,count(*) AS projects FROM projects GROUP BY category ORDER BY category"
+        )
+        .fetchall()
+    )
+    payload = [dict(row) for row in rows]
+    if json_output:
+        emit(payload, True)
+    elif not payload:
+        print("No project categories")
+    else:
+        for row in payload:
+            print(f"{row['category']}\t{row['projects']}")
 
 
 def project_seen(repository: str):
@@ -1240,6 +1356,8 @@ project_app.command("register")(project_register)
 project_app.command("list")(project_list)
 project_app.command("seen")(project_seen)
 project_app.command("remember")(project_remember)
+project_app.command("move")(project_move)
+project_app.command("category-tree")(project_category_tree)
 analyze_app.command("begin")(begin)
 analyze_app.command("complete")(complete)
 

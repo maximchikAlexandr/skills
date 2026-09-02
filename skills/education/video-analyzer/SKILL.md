@@ -89,10 +89,24 @@ same report path for all covered videos so the catalog renders one report.
 ## Extending an existing report
 
 When a user asks to add a video to a report, locate it by the visible report
-hash. Fetch and read only the new video's complete transcript, then revise the
-existing report so the new source is integrated into its synthesis rather than
-appended as an isolated summary. Preserve all existing supported claims and
-source identities. Register the result with:
+hash and start the resumable addition with `vidra report add-video REPORT_HASH
+VIDEO`. Fetch and read only the new video's complete transcript, then revise
+the existing report as one coherent narrative. Do not append a mini-summary or
+a pair of extra bullets merely because the source arrived later. Before editing
+prose, rebuild the conceptual outline across every source:
+
+- move foundational material earlier even when it comes from the newest video;
+- expand existing sections when the new evidence deepens the same concept;
+- insert genuinely new sections at their logical prerequisite or consequence,
+  not automatically at the end;
+- update the overview, concept map, examples, recall questions, source count,
+  players, and limitations wherever the new source changes them;
+- preserve source identity and timestamps while removing duplicated exposition.
+
+Read the complete report after revision as if all videos had been supplied at
+once. The transition between sections must explain why the next idea follows.
+Preserve all existing supported claims and source identities. Validate and
+register the result with:
 
 ```text
 vidra report add REPORT_HASH VIDEO \
@@ -100,6 +114,9 @@ vidra report add REPORT_HASH VIDEO \
   --report-file UPDATED_REPORT.html
 ```
 
-The command rejects missing transcripts, keeps the report hash stable, updates
-the single HTML file, and associates the new video. Never use it with a
-placeholder or model-generated transcript.
+`report add-video` records the target report and creates a resumable manifest;
+`report add` rejects missing transcripts and structurally incomplete HTML,
+keeps the report hash stable, saves the previous report, atomically replaces
+the single HTML file, and associates the new video. Run `vidra report validate
+REPORT_HASH` after registration. Never use these commands with a placeholder or
+model-generated transcript.

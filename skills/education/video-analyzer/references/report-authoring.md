@@ -140,6 +140,27 @@ Every claim and timestamp names its source. Do not concatenate two standalone
 summaries. Register one report path for all covered videos through
 `analyze complete --also`, with one verified transcript per video.
 
+## Extending an existing report
+
+Treat late-arriving video as new evidence for the whole document, not as an
+appendix. First map its concepts onto the current dependency graph:
+
+1. Identify which ideas are prerequisites, elaborations, examples,
+   counterexamples, consequences, or tensions relative to the existing story.
+2. Reorder the outline before editing paragraphs. A new prerequisite belongs
+   before the concepts that depend on it, even if that moves existing sections.
+3. Expand an existing section when sources answer the same question. Create a
+   new section only for a distinct conceptual role, and place it where that role
+   naturally occurs.
+4. Rewrite the overview, transitions, concept map, exercises, limitations, and
+   source metadata so they describe the combined corpus rather than the report's
+   edit history.
+5. Read the finished report without regard to source arrival order. If the
+   narrative still reveals “old material, then added video,” revise it again.
+
+Every retained claim keeps its provenance. Do not weaken traceability while
+deduplicating or synthesizing sources.
+
 ## Final quality gate
 
 - Every report claim is traceable to a source, or explicitly marked external.

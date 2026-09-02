@@ -112,6 +112,17 @@ class CliFlowTests(TestCase):
     def test_project_report_registration_uses_hash_filename(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
+            queued = self.run_vidra(
+                root / "home", "project", "queue-add", "deeplethe/utopia"
+            )
+            self.assertEqual(queued["project"]["source_type"], "github_project")
+            self.run_vidra(
+                root / "home",
+                "project",
+                "queue-begin",
+                "deeplethe/utopia",
+                "--user-approved",
+            )
             report = root / "utopia.html"
             report.write_text(
                 "<!doctype html><html><body>Deep dive</body></html>", encoding="utf-8"
@@ -159,3 +170,5 @@ class CliFlowTests(TestCase):
                 [item["report_hash"] for item in listed], [project["report_hash"]]
             )
             self.assertEqual(listed[0]["category"], "knowledge/tools")
+            queue = self.run_vidra(root / "home", "project", "queue-list", "--json")
+            self.assertEqual(queue, [])

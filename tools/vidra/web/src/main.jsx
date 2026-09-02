@@ -56,16 +56,17 @@ const Stat = ({ label, value }) => (
   <Paper className="stat" withBorder><Text size="xs" c="dimmed" tt="uppercase" fw={700}>{label}</Text><Text size="xl" fw={800}>{value}</Text></Paper>
 );
 
-const QueueCard = ({ video }) => {
-  const status = statusPresentation(video.status);
+const QueueCard = ({ item }) => {
+  const status = statusPresentation(item.status);
+  const isProject = item.source_type === 'github_project';
   return (
     <Card className="queue-card" withBorder>
       <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Box><Badge color={status.color} variant="light">{status.label}</Badge><Text fw={700} mt="sm">{video.title}</Text><Anchor href={video.source_url} target="_blank" rel="noopener noreferrer" size="sm">Открыть источник <IconArrowUpRight size={13} /></Anchor></Box>
-        <ThemeIcon variant="light" color={status.color}><IconClock size={18} /></ThemeIcon>
+        <Box><Group gap="xs"><Badge color={status.color} variant="light">{status.label}</Badge><Badge color={isProject ? 'dark' : 'teal'} variant="outline">{isProject ? 'GitHub' : 'Видео'}</Badge></Group><Text fw={700} mt="sm">{item.title}</Text><Anchor href={item.source_url} target="_blank" rel="noopener noreferrer" size="sm">Открыть источник <IconArrowUpRight size={13} /></Anchor></Box>
+        <ThemeIcon variant="light" color={status.color}>{isProject ? <IconBrandGithub size={18} /> : <IconClock size={18} />}</ThemeIcon>
       </Group>
-      {video.request && <Text size="sm" c="dimmed" mt="sm" lineClamp={1}>{video.request}</Text>}
-      {video.error && <Alert icon={<IconAlertTriangle size={16} />} color="red" variant="light" mt="md" p="sm"><Text size="sm" lineClamp={2}>{video.error}</Text></Alert>}
+      {item.request && <Text size="sm" c="dimmed" mt="sm" lineClamp={1}>{item.request}</Text>}
+      {item.error && <Alert icon={<IconAlertTriangle size={16} />} color="red" variant="light" mt="md" p="sm"><Text size="sm" lineClamp={2}>{item.error}</Text></Alert>}
     </Card>
   );
 };
@@ -120,7 +121,7 @@ const App = () => {
       <AppShell.Main><Container size="xl" py="xl">
         <Group className="hero" justify="space-between" align="flex-end" mb="xl"><Box className="hero-copy"><Text className="kicker">Библиотека знаний</Text><Title order={1}>Видео и GitHub-проекты</Title><Text c="dimmed" mt={4}>Очередь источников и проверяемые HTML-разборы.</Text></Box><SimpleGrid cols={5} spacing="xs" className="stats"><Stat label="В очереди" value={stats.queued} /><Stat label="В работе" value={stats.active} /><Stat label="Ошибки" value={stats.failed} /><Stat label="Видео" value={stats.reports} /><Stat label="Проекты" value={stats.projects} /></SimpleGrid></Group>
         {error && <Alert color="red" icon={<IconAlertTriangle size={18} />} mb="xl">{error}</Alert>}
-        <section><Group justify="space-between" mb="md"><Title order={2}>Очередь</Title><Badge color="gray" variant="light">{catalog.queue.length}</Badge></Group>{catalog.queue.length ? <SimpleGrid cols={{ base: 1, md: 2 }}>{catalog.queue.map((video) => <QueueCard key={video.id} video={video} />)}</SimpleGrid> : <Empty>Очередь пуста</Empty>}</section>
+        <section><Group justify="space-between" mb="md"><Box><Title order={2}>Очередь источников</Title><Text size="sm" c="dimmed">Видео и GitHub-проекты в порядке добавления</Text></Box><Badge color="gray" variant="light">{catalog.queue.length}</Badge></Group>{catalog.queue.length ? <SimpleGrid cols={{ base: 1, md: 2 }}>{catalog.queue.map((item) => <QueueCard key={`${item.source_type}:${item.id}`} item={item} />)}</SimpleGrid> : <Empty>Очередь пуста</Empty>}</section>
         <section className="reports"><Group justify="space-between" mb="md"><Box><Title order={2}>Готовые отчёты</Title>{selectedCategory && <Text size="sm" c="dimmed">{categoryLabel(selectedCategory)}</Text>}</Box><Badge variant="light">{visibleReports.length}</Badge></Group>{catalog.reports.length ? <div className="library"><CategoryBrowser items={catalog.reports} selected={selectedCategory} onSelect={setSelectedCategory} /><Box>{visibleReports.length ? <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>{visibleReports.map((report) => <ReportCard key={report.report_url} report={report} />)}</SimpleGrid> : <Empty>В этой теме отчётов нет</Empty>}</Box></div> : <Empty>Отчётов пока нет</Empty>}</section>
         <section className="reports" id="projects"><Group justify="space-between" mb="md"><Box><Title order={2}>Разборы GitHub-проектов</Title>{selectedProjectCategory ? <Text size="sm" c="dimmed">{categoryLabel(selectedProjectCategory)}</Text> : <Text size="sm" c="dimmed">Один проект — один самостоятельный отчёт</Text>}</Box><Badge color="dark" variant="light">{visibleProjects.length}</Badge></Group>{catalog.projects.length ? <div className="library"><CategoryBrowser items={catalog.projects} selected={selectedProjectCategory} onSelect={setSelectedProjectCategory} allLabel="Все проекты" /><Box>{visibleProjects.length ? <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>{visibleProjects.map((project) => <ProjectCard key={project.repository_key} project={project} />)}</SimpleGrid> : <Empty>В этой теме проектов нет</Empty>}</Box></div> : <Empty>Разборов проектов пока нет</Empty>}</section>
       </Container></AppShell.Main>

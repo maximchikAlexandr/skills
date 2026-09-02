@@ -71,7 +71,7 @@ def db():
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(
-        """CREATE TABLE IF NOT EXISTS videos(id INTEGER PRIMARY KEY,source_key TEXT NOT NULL UNIQUE,source_url TEXT NOT NULL,source_slug TEXT NOT NULL,title TEXT NOT NULL,request TEXT NOT NULL DEFAULT '',status TEXT NOT NULL CHECK(status IN ('queued','analyzing','analyzed','failed')),artifact_dir TEXT,report_title TEXT,report_concept TEXT,report_path TEXT,error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,started_at TEXT,completed_at TEXT);CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY,video_id INTEGER NOT NULL REFERENCES videos(id),status TEXT NOT NULL,started_at TEXT NOT NULL,finished_at TEXT,error TEXT);CREATE INDEX IF NOT EXISTS videos_status_idx ON videos(status,updated_at);CREATE TABLE IF NOT EXISTS project_registry(id INTEGER PRIMARY KEY,repository_key TEXT NOT NULL UNIQUE COLLATE NOCASE,repository_url TEXT,display_name TEXT NOT NULL,first_seen_at TEXT NOT NULL);CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY,repository_key TEXT NOT NULL UNIQUE COLLATE NOCASE,repository_url TEXT NOT NULL,owner TEXT NOT NULL,name TEXT NOT NULL,title TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',stars INTEGER,revision TEXT NOT NULL,report_hash TEXT NOT NULL UNIQUE,report_path TEXT NOT NULL,preview_url TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS projects_updated_idx ON projects(updated_at DESC);"""
+        """CREATE TABLE IF NOT EXISTS videos(id INTEGER PRIMARY KEY,source_key TEXT NOT NULL UNIQUE,source_url TEXT NOT NULL,source_slug TEXT NOT NULL,title TEXT NOT NULL,request TEXT NOT NULL DEFAULT '',status TEXT NOT NULL CHECK(status IN ('queued','analyzing','analyzed','failed')),artifact_dir TEXT,report_title TEXT,report_concept TEXT,report_path TEXT,error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,started_at TEXT,completed_at TEXT);CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY,video_id INTEGER NOT NULL REFERENCES videos(id),status TEXT NOT NULL,started_at TEXT NOT NULL,finished_at TEXT,error TEXT);CREATE INDEX IF NOT EXISTS videos_status_idx ON videos(status,updated_at);CREATE TABLE IF NOT EXISTS project_registry(id INTEGER PRIMARY KEY,repository_key TEXT NOT NULL UNIQUE COLLATE NOCASE,repository_url TEXT,display_name TEXT NOT NULL,first_seen_at TEXT NOT NULL);CREATE TABLE IF NOT EXISTS project_queue(id INTEGER PRIMARY KEY,repository_key TEXT NOT NULL UNIQUE COLLATE NOCASE,repository_url TEXT NOT NULL,title TEXT NOT NULL,request TEXT NOT NULL DEFAULT '',status TEXT NOT NULL CHECK(status IN ('queued','analyzing','analyzed','failed')),error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,started_at TEXT,completed_at TEXT);CREATE INDEX IF NOT EXISTS project_queue_status_idx ON project_queue(status,updated_at);CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY,repository_key TEXT NOT NULL UNIQUE COLLATE NOCASE,repository_url TEXT NOT NULL,owner TEXT NOT NULL,name TEXT NOT NULL,title TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',stars INTEGER,revision TEXT NOT NULL,report_hash TEXT NOT NULL UNIQUE,report_path TEXT NOT NULL,preview_url TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS projects_updated_idx ON projects(updated_at DESC);"""
     )
     columns = {row[1] for row in conn.execute("PRAGMA table_info(videos)")}
     if "report_hash" not in columns:
@@ -282,6 +282,127 @@ def project_view(row):
     return item
 
 
+def project_queue_view(row):
+    item = dict(row)
+    item["source_type"] = "github_project"
+    item["source_url"] = item["repository_url"]
+    return item
+
+
+def project_queue_get(conn, repository):
+    repo = normalize_github_repository(repository)
+    row = conn.execute(
+        "SELECT * FROM project_queue WHERE repository_key=? COLLATE NOCASE", (repo.key,)
+    ).fetchone()
+    if row is None:
+        raise SystemExit(f"queued project not found: {repo.key}")
+    return row
+
+
+def project_queue_add(
+    repository: str,
+    title: Optional[str] = typer.Option(None),
+    request: str = typer.Option(""),
+):
+    """Add a GitHub repository to the project-analysis queue."""
+    conn = db()
+    repo = normalize_github_repository(repository)
+    stamp = now()
+    report = conn.execute(
+        "SELECT * FROM projects WHERE repository_key=? COLLATE NOCASE", (repo.key,)
+    ).fetchone()
+    if report:
+        emit({"result": "already_analyzed", "project": project_view(report)})
+        return
+    old = conn.execute(
+        "SELECT * FROM project_queue WHERE repository_key=? COLLATE NOCASE", (repo.key,)
+    ).fetchone()
+    if old and old["status"] in {"queued", "analyzing"}:
+        emit({"result": "already_" + old["status"], "project": project_queue_view(old)})
+        return
+    display = title or repo.key
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO project_registry(repository_key,repository_url,display_name,first_seen_at) VALUES(?,?,?,?)",
+            (repo.key, repo.url, display, stamp),
+        )
+        if old:
+            conn.execute(
+                "UPDATE project_queue SET title=?,request=?,status='queued',error=NULL,started_at=NULL,completed_at=NULL,updated_at=? WHERE id=?",
+                (display, request, stamp, old["id"]),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO project_queue(repository_key,repository_url,title,request,status,created_at,updated_at) VALUES(?,?,?,?,'queued',?,?)",
+                (repo.key, repo.url, display, request, stamp, stamp),
+            )
+    emit(
+        {
+            "result": "requeued" if old else "queued",
+            "project": project_queue_view(project_queue_get(conn, repo.key)),
+        }
+    )
+
+
+def project_queue_list(json_output: bool = typer.Option(False, "--json")):
+    """List queued, active, and failed GitHub project analyses."""
+    rows = [
+        project_queue_view(row)
+        for row in db().execute(
+            "SELECT * FROM project_queue WHERE status IN ('queued','analyzing','failed') ORDER BY created_at"
+        )
+    ]
+    if json_output:
+        emit(rows, True)
+    elif not rows:
+        print("Project queue is empty")
+    else:
+        for row in rows:
+            print(f"{row['status']}\t{row['repository_key']}\t{row['title']}")
+
+
+def project_queue_begin(repository: str, user_approved: bool = typer.Option(False)):
+    """Mark one explicitly requested project analysis as active."""
+    if not user_approved:
+        raise SystemExit(
+            "requires a separate explicit user request and --user-approved"
+        )
+    conn = db()
+    row = project_queue_get(conn, repository)
+    if row["status"] != "queued":
+        raise SystemExit(f"expected queued, got {row['status']}")
+    stamp = now()
+    with conn:
+        conn.execute(
+            "UPDATE project_queue SET status='analyzing',started_at=?,updated_at=?,error=NULL WHERE id=?",
+            (stamp, stamp, row["id"]),
+        )
+    emit(
+        {
+            "result": "analyzing",
+            "project": project_queue_view(project_queue_get(conn, repository)),
+        }
+    )
+
+
+def project_queue_fail(repository: str, error: str = typer.Option(...)):
+    """Record a failed project analysis while retaining it in the queue."""
+    conn = db()
+    row = project_queue_get(conn, repository)
+    stamp = now()
+    with conn:
+        conn.execute(
+            "UPDATE project_queue SET status='failed',error=?,updated_at=? WHERE id=?",
+            (error, stamp, row["id"]),
+        )
+    emit(
+        {
+            "result": "failed",
+            "project": project_queue_view(project_queue_get(conn, repository)),
+        }
+    )
+
+
 def project_category_warning(conn, category):
     count = conn.execute(
         "SELECT count(*) FROM projects WHERE category=?", (category,)
@@ -371,6 +492,10 @@ def project_register(
                 stamp,
                 stamp,
             ),
+        )
+        conn.execute(
+            "UPDATE project_queue SET status='analyzed',error=NULL,completed_at=?,updated_at=? WHERE repository_key=? COLLATE NOCASE",
+            (stamp, stamp, repo.key),
         )
     payload = {
         "result": "registered" if not existing else "replaced",
@@ -1178,6 +1303,9 @@ def doctor():
         "queue": conn.execute(
             "SELECT count(*) FROM videos WHERE status!='analyzed'"
         ).fetchone()[0],
+        "project_queue": conn.execute(
+            "SELECT count(*) FROM project_queue WHERE status!='analyzed'"
+        ).fetchone()[0],
         "reports": conn.execute(
             "SELECT count(*) FROM videos WHERE status='analyzed'"
         ).fetchone()[0],
@@ -1228,11 +1356,18 @@ class Handler(BaseHTTPRequestHandler):
         if path in {"/api/videos", "/api/catalog"}:
             conn = db()
             queue = [
-                view(r)
+                {**view(r), "source_type": "video"}
                 for r in conn.execute(
                     "SELECT * FROM videos WHERE status IN ('queued','analyzing','failed') ORDER BY created_at"
                 )
             ]
+            queue.extend(
+                project_queue_view(r)
+                for r in conn.execute(
+                    "SELECT * FROM project_queue WHERE status IN ('queued','analyzing','failed') ORDER BY created_at"
+                )
+            )
+            queue.sort(key=lambda item: item["created_at"])
             grouped = {}
             for raw in conn.execute(
                 "SELECT * FROM videos WHERE status='analyzed' ORDER BY completed_at DESC"
@@ -1358,6 +1493,10 @@ project_app.command("seen")(project_seen)
 project_app.command("remember")(project_remember)
 project_app.command("move")(project_move)
 project_app.command("category-tree")(project_category_tree)
+project_app.command("queue-add")(project_queue_add)
+project_app.command("queue-list")(project_queue_list)
+project_app.command("queue-begin")(project_queue_begin)
+project_app.command("queue-fail")(project_queue_fail)
 analyze_app.command("begin")(begin)
 analyze_app.command("complete")(complete)
 

@@ -17,6 +17,19 @@ hash, stores `<hash>.html`, injects a `Все проекты` return link, and e
 record through the catalog API. `vidra project list --json` is the canonical
 deduplication registry for GitHub research.
 
+Queue project research without starting it:
+
+```bash
+vidra project queue-add owner/repository
+vidra project queue-list --json
+vidra project queue-begin owner/repository --user-approved
+vidra project queue-fail owner/repository --error "reason"
+```
+
+Project analysis has its own SQLite lifecycle, while the web catalog merges
+project and video items into one chronological source queue. Registering a
+project report completes the matching queue item automatically.
+
 Vidra keeps a durable SQLite queue of videos, analysis runs, transcript
 artifacts, and HTML report registrations under `~/.vidra` (or `VIDRA_HOME`).
 The accompanying `video-analyzer` skill writes transcripts and frame samples

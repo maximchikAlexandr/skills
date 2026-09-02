@@ -33,7 +33,11 @@ class DomainTests(TestCase):
     def test_github_repository_has_one_canonical_identity(self):
         first = normalize_github_repository("DeepLethe/Utopia")
         second = normalize_github_repository("https://github.com/deeplethe/utopia.git")
+        tree = normalize_github_repository(
+            "https://github.com/DeepLethe/Utopia/tree/main"
+        )
         self.assertEqual(first.key, second.key)
+        self.assertEqual(first.key, tree.key)
         self.assertEqual(first.url, "https://github.com/DeepLethe/Utopia")
         with self.assertRaisesRegex(ValueError, "only github.com"):
             normalize_github_repository("https://gitlab.com/deeplethe/utopia")

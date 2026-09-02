@@ -3,10 +3,11 @@ import test from 'node:test';
 
 import { categoryCounts, categoryLabel, catalogStats, itemsInCategory, normalizeCatalog, reportHref, reportsInCategory, repositoryLabel, videoIdFromUrl } from './catalog.js';
 
-test('normalizes catalog without mutating its input', () => {
-  const payload = { queue: [{ id: 1, status: 'queued' }], reports: [{ id: 2, report_url: 'reports/a b.html' }] };
+test('normalizes a unified source queue without mutating its input', () => {
+  const payload = { queue: [{ id: 1, status: 'queued', source_type: 'video' }, { id: 2, status: 'analyzing', source_type: 'github_project' }], reports: [{ id: 2, report_url: 'reports/a b.html' }] };
   const catalog = normalizeCatalog(payload);
-  assert.deepEqual(catalogStats(catalog), { queued: 1, active: 0, failed: 0, reports: 1, projects: 0 });
+  assert.deepEqual(catalogStats(catalog), { queued: 1, active: 1, failed: 0, reports: 1, projects: 0 });
+  assert.equal(catalog.queue[1].source_type, 'github_project');
   assert.equal(Object.isFrozen(catalog.queue[0]), true);
   assert.equal(Object.isFrozen(payload.queue[0]), false);
 });

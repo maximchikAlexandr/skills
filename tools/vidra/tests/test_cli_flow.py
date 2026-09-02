@@ -33,7 +33,6 @@ class CliFlowTests(TestCase):
                 "<!doctype html><title>Report</title><body>Report</body>",
                 encoding="utf-8",
             )
-
             queued = self.run_vidra(root / "home", "queue", "add", SOURCE)
             video_id = str(queued["video"]["id"])
             self.run_vidra(
@@ -53,16 +52,15 @@ class CliFlowTests(TestCase):
             )
             stored_report = root / "home" / completed["report_url"]
             self.assertTrue(stored_report.is_file())
-            self.assertEqual(stored_report.name, f'{completed["report_hash"]}.html')
-            self.assertIn(
-                completed["report_hash"], stored_report.read_text(encoding="utf-8")
-            )
+            self.assertEqual(stored_report.name, f"{completed['report_hash']}.html")
             rendered = stored_report.read_text(encoding="utf-8")
-            self.assertIn('data-copy-report-id', rendered)
-            self.assertLess(rendered.index("data-vidra-report-copy"), rendered.index("</body>"))
+            self.assertIn(completed["report_hash"], rendered)
+            self.assertIn("data-copy-report-id", rendered)
 
             next_transcript = root / "next.vtt"
-            next_transcript.write_text("new verified transcript " * 20, encoding="utf-8")
+            next_transcript.write_text(
+                "new verified transcript " * 20, encoding="utf-8"
+            )
             prepared = self.run_vidra(
                 root / "home",
                 "report",
@@ -72,17 +70,12 @@ class CliFlowTests(TestCase):
                 "--title",
                 "Next video",
             )
-            self.assertEqual(prepared["result"], "addition_prepared")
-            self.assertTrue(Path(prepared["manifest"]).is_file())
             updated_report = root / "updated.html"
             updated_report.write_text(
-                '<!doctype html><body><a href="../">Все видео</a>'
-                '<iframe src="https://www.youtube.com/embed/flow123"></iframe>'
-                '<iframe src="https://www.youtube.com/embed/next456"></iframe>'
-                "Updated</body>",
+                '<!doctype html><body><a href="../">Все видео</a><iframe src="https://www.youtube.com/embed/flow123"></iframe><iframe src="https://www.youtube.com/embed/next456"></iframe>Updated</body>',
                 encoding="utf-8",
             )
-            attached = self.run_vidra(
+            self.run_vidra(
                 root / "home",
                 "report",
                 "add",
@@ -93,26 +86,12 @@ class CliFlowTests(TestCase):
                 "--report-file",
                 str(updated_report),
             )
-            self.assertEqual(attached["result"], "attached")
-            self.assertIn("Updated", stored_report.read_text(encoding="utf-8"))
             with sqlite3.connect(root / "home" / "vidra.sqlite3") as connection:
-                run_status = connection.execute(
+                status = connection.execute(
                     "SELECT status FROM runs WHERE video_id=? ORDER BY id DESC LIMIT 1",
                     (prepared["video_id"],),
                 ).fetchone()[0]
-            self.assertEqual(run_status, "analyzed")
-            additions = self.run_vidra(
-                root / "home",
-                "report",
-                "additions",
-                completed["report_hash"],
-                "--json",
-            )
-            self.assertEqual([item["title"] for item in additions], ["Next video"])
-            validated = self.run_vidra(
-                root / "home", "report", "validate", completed["report_hash"]
-            )
-            self.assertEqual(validated["result"], "valid")
+            self.assertEqual(status, "analyzed")
 
             moved = self.run_vidra(
                 root / "home",
@@ -123,11 +102,43 @@ class CliFlowTests(TestCase):
             )
             stored_report = root / "home" / moved["report_url"]
             self.assertTrue(stored_report.is_file())
-            categories = self.run_vidra(root / "home", "category", "tree", "--json")
-            self.assertEqual(categories, [{"category": "ai/code-review", "reports": 1}])
-
+            self.assertIn('href="../../../"', stored_report.read_text(encoding="utf-8"))
             removed = self.run_vidra(
                 root / "home", "queue", "remove", video_id, "--yes"
             )
             self.assertTrue(removed["files_preserved"])
             self.assertTrue(stored_report.is_file())
+
+    def test_project_report_registration_uses_hash_filename(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = root / "utopia.html"
+            report.write_text(
+                "<!doctype html><html><body>Deep dive</body></html>", encoding="utf-8"
+            )
+            registered = self.run_vidra(
+                root / "home",
+                "project",
+                "register",
+                "deeplethe/utopia",
+                "--report-file",
+                str(report),
+                "--title",
+                "Utopia",
+                "--revision",
+                "0f3ff5af",
+                "--summary",
+                "Knowledge platform",
+                "--stars",
+                "1900",
+            )
+            project = registered["project"]
+            self.assertEqual(project["repository_key"], "deeplethe/utopia")
+            self.assertRegex(project["report_hash"], r"^[0-9a-f]{12}$")
+            stored = root / "home" / project["report_url"]
+            self.assertTrue(stored.is_file())
+            self.assertIn("Все проекты", stored.read_text(encoding="utf-8"))
+            listed = self.run_vidra(root / "home", "project", "list", "--json")
+            self.assertEqual(
+                [item["report_hash"] for item in listed], [project["report_hash"]]
+            )

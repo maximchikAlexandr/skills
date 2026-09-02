@@ -3,6 +3,7 @@ const ACTIVE_STATUSES = Object.freeze(new Set(['queued', 'analyzing', 'failed'])
 export const EMPTY_CATALOG = Object.freeze({
   queue: Object.freeze([]),
   reports: Object.freeze([]),
+  projects: Object.freeze([]),
   generatedAt: null,
 });
 
@@ -11,14 +12,16 @@ const freezeItems = (items) => Object.freeze(items.map((item) => Object.freeze({
 export const normalizeCatalog = (payload) => Object.freeze({
   queue: freezeItems((payload?.queue ?? []).filter((item) => ACTIVE_STATUSES.has(item.status))),
   reports: freezeItems((payload?.reports ?? []).filter((item) => item.report_url)),
+  projects: freezeItems((payload?.projects ?? []).filter((item) => item.report_url)),
   generatedAt: payload?.generated_at ?? null,
 });
 
-export const catalogStats = ({ queue, reports }) => Object.freeze({
+export const catalogStats = ({ queue, reports, projects }) => Object.freeze({
   queued: queue.filter(({ status }) => status === 'queued').length,
   active: queue.filter(({ status }) => status === 'analyzing').length,
   failed: queue.filter(({ status }) => status === 'failed').length,
   reports: reports.length,
+  projects: projects.length,
 });
 
 export const videoIdFromUrl = (sourceUrl = '') => {
@@ -38,6 +41,8 @@ export const thumbnailUrl = (sourceUrl) => {
 };
 
 export const reportHref = (reportUrl = '') => reportUrl.split('/').map(encodeURIComponent).join('/');
+
+export const repositoryLabel = ({ owner = '', name = '' }) => `${owner}/${name}`;
 
 export const statusPresentation = (status) => Object.freeze({
   queued: { label: 'В очереди', color: 'gray' },

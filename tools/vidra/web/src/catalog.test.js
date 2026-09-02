@@ -1,14 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { categoryCounts, categoryLabel, catalogStats, normalizeCatalog, reportHref, reportsInCategory, videoIdFromUrl } from './catalog.js';
+import { categoryCounts, categoryLabel, catalogStats, normalizeCatalog, reportHref, reportsInCategory, repositoryLabel, videoIdFromUrl } from './catalog.js';
 
 test('normalizes catalog without mutating its input', () => {
   const payload = { queue: [{ id: 1, status: 'queued' }], reports: [{ id: 2, report_url: 'reports/a b.html' }] };
   const catalog = normalizeCatalog(payload);
-  assert.deepEqual(catalogStats(catalog), { queued: 1, active: 0, failed: 0, reports: 1 });
+  assert.deepEqual(catalogStats(catalog), { queued: 1, active: 0, failed: 0, reports: 1, projects: 0 });
   assert.equal(Object.isFrozen(catalog.queue[0]), true);
   assert.equal(Object.isFrozen(payload.queue[0]), false);
+});
+
+test('normalizes project reports and labels repositories', () => {
+  const catalog = normalizeCatalog({ projects: [{ owner: 'deep', name: 'utopia', report_url: 'projects/hash.html' }] });
+  assert.equal(repositoryLabel(catalog.projects[0]), 'deep/utopia');
+  assert.equal(Object.isFrozen(catalog.projects[0]), true);
 });
 
 test('extracts YouTube ids and encodes report paths', () => {

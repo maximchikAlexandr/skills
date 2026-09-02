@@ -2,7 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from vidra.cli import with_report_identity
+from vidra.cli import REPORTS, library_href, with_report_identity
 
 
 class ReportHtmlTests(TestCase):
@@ -36,16 +36,41 @@ class ReportHtmlTests(TestCase):
 
         self.assertIn("script-src 'unsafe-inline'", rendered)
 
+    def test_catalog_link_accounts_for_category_depth(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "report.html"
+            source.write_text(
+                '<html><body><a href="../">Все видео</a></body></html>',
+                encoding="utf-8",
+            )
+            target = REPORTS / "ai" / "code-review" / "abc123.html"
+            rendered = with_report_identity(
+                source, "abc123", library_href(target)
+            ).decode()
+
+        self.assertIn('<a href="../../../">Все видео</a>', rendered)
+
+    def test_default_catalog_link_repairs_legacy_href(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "report.html"
+            source.write_text(
+                '<html><body><a href="wrong/">All videos</a></body></html>',
+                encoding="utf-8",
+            )
+            rendered = with_report_identity(source, "abc123").decode()
+
+        self.assertIn('<a href="../">All videos</a>', rendered)
+
     def test_repairs_legacy_duplicate_hash_field(self):
         with TemporaryDirectory() as directory:
             source = Path(directory) / "report.html"
             source.write_text(
                 '<html><body><a href="../">Все видео</a>'
                 '<span data-vidra-report-id="true"><span><code>old</code>'
-                '<button data-copy-report-id></button></span></span>'
+                "<button data-copy-report-id></button></span></span>"
                 '<span style="display:inline-flex;align-items:center;overflow:hidden">'
-                '<code>old</code><button data-copy-report-id></button></span>'
-                '</body></html>',
+                "<code>old</code><button data-copy-report-id></button></span>"
+                "</body></html>",
                 encoding="utf-8",
             )
             rendered = with_report_identity(source, "new123").decode()

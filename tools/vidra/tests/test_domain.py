@@ -4,6 +4,7 @@ from unittest import TestCase
 
 from vidra.domain import (
     normalize_category,
+    normalize_github_repository,
     normalize_source,
     report_hash,
     report_validation_errors,
@@ -28,6 +29,14 @@ class DomainTests(TestCase):
             source = normalize_source(str(path))
             self.assertEqual(source.url, str(path.resolve()))
             self.assertTrue(source.key.startswith("source:"))
+
+    def test_github_repository_has_one_canonical_identity(self):
+        first = normalize_github_repository("DeepLethe/Utopia")
+        second = normalize_github_repository("https://github.com/deeplethe/utopia.git")
+        self.assertEqual(first.key, second.key)
+        self.assertEqual(first.url, "https://github.com/DeepLethe/Utopia")
+        with self.assertRaisesRegex(ValueError, "only github.com"):
+            normalize_github_repository("https://gitlab.com/deeplethe/utopia")
 
     def test_only_explicit_lifecycle_transitions_are_allowed(self):
         require_transition("queued", "analyzing")

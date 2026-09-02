@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vidra"
 version = "0.1.0"
-description = "Local SQLite-backed queue and report catalog for video analysis"
+description = "Local SQLite-backed source queue and analysis report catalog"
 requires-python = ">=3.9"
 dependencies = ["typer>=0.12,<1"]
 

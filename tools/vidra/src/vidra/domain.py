@@ -22,6 +22,40 @@ class Source:
     slug: str
 
 
+@dataclass(frozen=True)
+class GitHubRepository:
+    key: str
+    url: str
+    owner: str
+    name: str
+
+
+def normalize_github_repository(value: str) -> GitHubRepository:
+    """Return the canonical identity of a GitHub repository URL or owner/name."""
+    raw = value.strip()
+    parsed = urlparse(raw if "://" in raw else f"https://github.com/{raw}")
+    if parsed.hostname not in {"github.com", "www.github.com"}:
+        raise ValueError("only github.com repositories are supported")
+    parts = [part for part in parsed.path.removesuffix(".git").split("/") if part]
+    if len(parts) != 2 or any(
+        not re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in parts
+    ):
+        raise ValueError("repository must be a GitHub owner/name URL")
+    owner, name = parts
+    key = f"{owner.lower()}/{name.lower()}"
+    return GitHubRepository(
+        key=key,
+        url=f"https://github.com/{owner}/{name}",
+        owner=owner,
+        name=name,
+    )
+
+
+def project_report_hash(repository_key: str, revision: str) -> str:
+    """Return a stable short filename identity for one repository revision."""
+    return sha256(f"{repository_key}\0{revision}".encode()).hexdigest()[:12]
+
+
 def normalize_source(value: str) -> Source:
     """Return a stable identity for YouTube URLs and local/other sources."""
     parsed = urlparse(value)

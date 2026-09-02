@@ -1,5 +1,21 @@
 # Vidra
 
+Vidra is the shared local registry and web catalog for analyzed information
+sources. Video reports and GitHub project reports have separate lifecycle and
+database tables, while sharing one protected index and artifact home.
+
+Register a completed GitHub report:
+
+```bash
+vidra project register owner/repository --report-file report.html \
+  --title "Project" --revision COMMIT_SHA --summary "Short description" --stars 123
+```
+
+The command validates the GitHub identity, assigns a stable 12-character report
+hash, stores `<hash>.html`, injects a `Все проекты` return link, and exposes the
+record through the catalog API. `vidra project list --json` is the canonical
+deduplication registry for GitHub research.
+
 Vidra keeps a durable SQLite queue of videos, analysis runs, transcript
 artifacts, and HTML report registrations under `~/.vidra` (or `VIDRA_HOME`).
 The accompanying `video-analyzer` skill writes transcripts and frame samples

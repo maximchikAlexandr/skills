@@ -78,6 +78,23 @@ For every timestamp, make the text seek the embedded player and place a small
 adjacent YouTube link that opens the same moment in a new tab. Do not let visual
 polish replace traceability to the transcript.
 
+## GitHub project follow-up
+
+While reading the complete transcript and available source metadata, note any
+software project that the video reviews or discusses substantially. A passing
+name, sponsor mention, or tool shown only incidentally is not enough. When an
+unambiguous official public GitHub repository exists for such a project, add a
+short optional next step to the final handoff after the video report has been
+successfully registered and validated: offer to analyze `OWNER/REPO` with the
+`discover-github-projects` skill.
+
+Verify the repository from an official GitHub link or project-controlled source
+before naming it; do not infer a repository from a similar name. If several
+projects qualify, list only the few central to the video's subject. The offer
+does not authorize queueing or analyzing a repository—wait for the user's
+explicit request. Keep any later project analysis separate from the video
+report, as required by `discover-github-projects`.
+
 ## Combined reports
 
 When the user asks to combine videos, deduplicate normalized sources and treat

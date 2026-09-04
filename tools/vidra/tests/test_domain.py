@@ -5,6 +5,7 @@ from unittest import TestCase
 from vidra.domain import (
     normalize_category,
     normalize_github_repository,
+    normalize_rating,
     normalize_source,
     report_hash,
     report_validation_errors,
@@ -58,6 +59,13 @@ class DomainTests(TestCase):
         self.assertEqual(normalize_category("AI / Code Review"), "ai/code-review")
         with self.assertRaisesRegex(ValueError, "invalid category"):
             normalize_category("ai/../review")
+
+    def test_rating_is_an_integer_from_one_to_five(self):
+        self.assertEqual(normalize_rating(5), 5)
+        self.assertEqual(normalize_rating("1"), 1)
+        for invalid in (0, 6, True, "3.0", None):
+            with self.assertRaisesRegex(ValueError, "rating must"):
+                normalize_rating(invalid)
 
     def test_report_validation_is_pure_and_checks_every_source(self):
         html = (

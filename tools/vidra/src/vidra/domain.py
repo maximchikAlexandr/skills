@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 VIDEO_STATES = frozenset({"queued", "analyzing", "analyzed", "failed"})
 CATEGORY_LIMIT = 10
 PROJECT_CATEGORY_LIMIT = 15
+RATING_VALUES = frozenset(range(1, 6))
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,19 @@ def normalize_category(value: str) -> str:
     if not parts:
         raise ValueError("category is required")
     return "/".join(parts)
+
+
+def normalize_rating(value: object) -> int:
+    """Return a valid user rating from one to five stars."""
+    if isinstance(value, bool):
+        raise ValueError("rating must be an integer from 1 to 5")
+    try:
+        rating = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("rating must be an integer from 1 to 5") from exc
+    if rating not in RATING_VALUES or str(value).strip() != str(rating):
+        raise ValueError("rating must be an integer from 1 to 5")
+    return rating
 
 
 def report_validation_errors(

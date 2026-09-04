@@ -69,6 +69,20 @@ export const itemsInCategory = (items, category) => (
 
 export const reportsInCategory = itemsInCategory;
 
+export const sortByRating = (items) => Object.freeze(
+  [...items].sort((left, right) => (right.rating ?? 0) - (left.rating ?? 0)),
+);
+
+export const withRating = (catalog, sourceType, reportHash, rating) => {
+  const key = sourceType === 'video' ? 'reports' : 'projects';
+  return Object.freeze({
+    ...catalog,
+    [key]: freezeItems(catalog[key].map((item) => (
+      item.report_hash === reportHash ? { ...item, rating } : item
+    ))),
+  });
+};
+
 const CATEGORY_LABELS = Object.freeze({
   ai: 'AI',
   http: 'HTTP',

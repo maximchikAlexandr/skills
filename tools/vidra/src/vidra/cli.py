@@ -21,6 +21,7 @@ from .domain import (
     PROJECT_CATEGORY_LIMIT,
     normalize_category,
     normalize_github_repository,
+    normalize_rating,
     normalize_source,
     project_report_hash,
     report_hash,
@@ -82,10 +83,18 @@ def db():
         )
     if "target_report_hash" not in columns:
         conn.execute("ALTER TABLE videos ADD COLUMN target_report_hash TEXT")
+    if "rating" not in columns:
+        conn.execute(
+            "ALTER TABLE videos ADD COLUMN rating INTEGER CHECK(rating BETWEEN 1 AND 5)"
+        )
     project_columns = {row[1] for row in conn.execute("PRAGMA table_info(projects)")}
     if "category" not in project_columns:
         conn.execute(
             "ALTER TABLE projects ADD COLUMN category TEXT NOT NULL DEFAULT 'uncategorized'"
+        )
+    if "rating" not in project_columns:
+        conn.execute(
+            "ALTER TABLE projects ADD COLUMN rating INTEGER CHECK(rating BETWEEN 1 AND 5)"
         )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS videos_report_hash_idx ON videos(report_hash)"
@@ -1336,6 +1345,53 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def json_error(self, status, message):
+        body = json.dumps({"error": message}, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.hdr("application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        path = unquote(urlparse(self.path).path)
+        if path != "/api/ratings":
+            self.send_error(404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 2 or length > 4096:
+                raise ValueError("invalid request size")
+            request = json.loads(self.rfile.read(length))
+            source_type = request.get("source_type")
+            identity = str(request.get("report_hash", "")).strip()
+            rating = normalize_rating(request.get("rating"))
+            if not re.fullmatch(r"[0-9a-f]{12}", identity):
+                raise ValueError("invalid report hash")
+            conn = db()
+            if source_type == "video":
+                cursor = conn.execute(
+                    "UPDATE videos SET rating=?,updated_at=? WHERE report_hash=? AND status='analyzed'",
+                    (rating, now(), identity),
+                )
+            elif source_type == "github_project":
+                cursor = conn.execute(
+                    "UPDATE projects SET rating=?,updated_at=? WHERE report_hash=?",
+                    (rating, now(), identity),
+                )
+            else:
+                raise ValueError("invalid source type")
+            if cursor.rowcount == 0:
+                conn.rollback()
+                self.json_error(404, "report not found")
+                return
+            conn.commit()
+            self.payload(
+                {"result": "rated", "source_type": source_type, "report_hash": identity, "rating": rating}
+            )
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            self.json_error(400, str(exc))
 
     def file(self, path):
         if not path.is_file():

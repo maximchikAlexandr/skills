@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { categoryCounts, categoryLabel, catalogStats, itemsInCategory, normalizeCatalog, reportHref, reportsInCategory, repositoryLabel, videoIdFromUrl } from './catalog.js';
+import { categoryCounts, categoryLabel, catalogStats, itemsInCategory, normalizeCatalog, reportHref, reportsInCategory, repositoryLabel, sortByRating, videoIdFromUrl, withRating } from './catalog.js';
 
 test('normalizes a unified source queue without mutating its input', () => {
   const payload = { queue: [{ id: 1, status: 'queued', source_type: 'video' }, { id: 2, status: 'analyzing', source_type: 'github_project' }], reports: [{ id: 2, report_url: 'reports/a b.html' }] };
@@ -39,4 +39,15 @@ test('builds a nested category index and filters descendants', () => {
   assert.equal(reportsInCategory(reports, 'ai').length, 2);
   assert.equal(itemsInCategory(reports, 'ai/code-review').length, 1);
   assert.equal(categoryLabel('functional-programming'), 'Функциональное программирование');
+});
+
+test('rates immutably and sorts reports from highest rating', () => {
+  const catalog = normalizeCatalog({ reports: [
+    { report_hash: 'a', report_url: 'a.html', rating: 2 },
+    { report_hash: 'b', report_url: 'b.html' },
+  ] });
+  const updated = withRating(catalog, 'video', 'b', 5);
+  assert.equal(catalog.reports[1].rating, undefined);
+  assert.equal(updated.reports[1].rating, 5);
+  assert.deepEqual(sortByRating(updated.reports).map(({ report_hash }) => report_hash), ['b', 'a']);
 });

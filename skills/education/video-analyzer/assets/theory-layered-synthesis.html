@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>{{TITLE}}</title>
+  <style>
+    :root{--paper:#f6f1e7;--ink:#202936;--muted:#657181;--panel:#fffdf8;--line:#d9cfbe;--accent:#315f85;--accent2:#9d563b}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.7 Georgia,serif}.shell{max-width:1180px;margin:auto;padding:32px 22px 90px}.back{display:inline-block;margin-bottom:18px;padding:6px 11px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);font:700 .8rem system-ui,sans-serif;text-decoration:none}.back:hover{background:var(--accent);color:#fff}.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}.player{width:100%;aspect-ratio:16/9;border:0;border-radius:12px;background:#000}h1{font:700 clamp(2.2rem,6vw,5.3rem)/.98 system-ui,sans-serif;letter-spacing:-.05em;margin:.25em 0}.eyebrow,h2,h3{font-family:system-ui,sans-serif}.eyebrow{color:var(--accent2);font-size:.75rem;text-transform:uppercase;letter-spacing:.14em;font-weight:800}.lead,.meta{color:var(--muted)}.minute,.card,.claim,.cornell{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.minute{border:3px solid var(--accent);box-shadow:7px 7px 0 #315f8522}.concepts{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.concept{padding:14px;border:1px solid var(--accent);border-radius:12px;background:#eef5f8;font-family:system-ui,sans-serif}.relation{display:block;color:var(--accent2);font-size:.78rem;font-weight:700}.layers{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card h3{margin-top:0}.cornell{display:grid;grid-template-columns:minmax(160px,28%) 1fr;padding:0;overflow:hidden}.cue,.notes{padding:18px}.cue{background:#e7eef2;font:600 .95rem/1.5 system-ui,sans-serif}.notes{border-left:1px solid var(--line)}.claim{margin:12px 0}.confidence{font:700 .78rem system-ui,sans-serif;color:var(--accent2)}.time{border:0;border-radius:7px;background:var(--accent);color:#fff;padding:4px 8px;cursor:pointer}.time:focus{outline:3px solid var(--accent2)}.youtube{color:#d33;text-decoration:none;margin-left:4px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid var(--line);vertical-align:top}@media(max-width:760px){.layers{grid-template-columns:1fr}.cornell{display:block}.notes{border-left:0;border-top:1px solid var(--line)}}
+  </style>
+</head>
+<body><main class="shell">
+  <a class="back" href="../">← Все видео</a>
+  <div class="eyebrow">Theory · layered synthesis · {{CLASSIFICATION_RATIONALE}}</div>
+  <h1>{{TITLE}}</h1><p class="lead">{{SUBTITLE}}</p>
+  <section class="players">
+    <!-- Repeat figure for every source. Timestamp controls route by VIDEO_ID. -->
+    <figure><iframe id="player-{{VIDEO_ID}}" class="player" src="https://www.youtube.com/embed/{{VIDEO_ID}}?enablejsapi=1" title="{{VIDEO_TITLE}}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe><figcaption><strong>{{VIDEO_TITLE}}</strong><div class="meta">{{SOURCE_META}}</div></figcaption></figure>
+  </section>
+
+  <section class="minute"><h2>Обзор за одну минуту</h2><p>{{ONE_MINUTE_OVERVIEW}}</p></section>
+  <section><h2>Центральный тезис</h2><p>{{CENTRAL_THESIS}}</p><button class="time" data-video-id="{{VIDEO_ID}}" data-seconds="{{THESIS_SECONDS}}">{{THESIS_TIME}}</button><a class="youtube" href="https://youtu.be/{{VIDEO_ID}}?t={{THESIS_SECONDS}}" target="_blank" rel="noopener" aria-label="Открыть этот момент на YouTube">▶</a></section>
+
+  <section><h2>Карта понятий</h2><div class="concepts">
+    <!-- Repeat nodes; relationship labels must be explicit. -->
+    <div class="concept"><strong>{{CONCEPT_A}}</strong><span class="relation">{{RELATION_TO_B}} ↓</span>{{CONCEPT_B}}</div>{{CONCEPT_NODES}}
+  </div></section>
+
+  <section><h2>Послойный конспект</h2><div class="layers"><article class="card"><h3>Определение</h3><p>{{DEFINITION}}</p></article><article class="card"><h3>Механизм</h3><p>{{MECHANISM}}</p></article><article class="card"><h3>Доказательство или пример</h3><p>{{EVIDENCE_OR_EXAMPLE}}</p></article><article class="card"><h3>Следствие</h3><p>{{IMPLICATION}}</p></article></div></section>
+
+  <section><h2>Cornell: вопросы и заметки</h2>
+    <!-- Repeat .cornell. The cue must support active recall by itself. -->
+    <article class="cornell"><div class="cue">{{RECALL_CUE}}</div><div class="notes"><p>{{EVIDENCE_BACKED_NOTE}}</p><button class="time" data-video-id="{{VIDEO_ID}}" data-seconds="{{NOTE_SECONDS}}">{{NOTE_TIME}}</button><a class="youtube" href="https://youtu.be/{{VIDEO_ID}}?t={{NOTE_SECONDS}}" target="_blank" rel="noopener" aria-label="Открыть этот момент на YouTube">▶</a></div></article>
+  </section>
+
+  <section><h2>Аудит утверждений</h2>
+    <article class="claim"><div class="confidence">{{CONFIDENCE}}</div><h3>{{CLAIM}}</h3><p><strong>Опора в видео:</strong> {{CLAIM_SUPPORT}}</p><p><strong>Как проверить:</strong> {{VERIFICATION_TEST}}</p></article>{{CLAIM_CARDS}}
+  </section>
+  <section><h2>Напряжения и ограничения</h2><table><thead><tr><th>Положение</th><th>Ограничение или конфликт</th><th>Что остаётся неизвестным</th></tr></thead><tbody>{{LIMIT_ROWS}}</tbody></table></section>
+  <section><h2>Вопросы для воспроизведения</h2><ol>{{RECALL_QUESTIONS_LI}}</ol></section>
+  <section><h2>Источники и качество</h2><p>{{EVIDENCE_AND_CONFIDENCE}}</p><ul>{{MENTIONED_REFERENCES_LI}}</ul></section>
+</main>
+<script>
+document.querySelectorAll('.time').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.videoId,seconds=button.dataset.seconds,player=document.getElementById(`player-${id}`);if(!player)return;player.src=`https://www.youtube.com/embed/${id}?autoplay=1&start=${seconds}&enablejsapi=1`;player.scrollIntoView({behavior:'smooth',block:'center'})}));
+  </script>
+</body></html>

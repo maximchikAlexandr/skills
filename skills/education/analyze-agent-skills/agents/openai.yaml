@@ -1,0 +1,4 @@
+interface:
+  display_name: "Analyze agent skills"
+  short_description: "Deep behavioral reviews of one AI skill"
+  default_prompt: "Analyze one AI-agent skill and create a validated four-section HTML deep dive."

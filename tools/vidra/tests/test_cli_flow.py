@@ -173,9 +173,42 @@ class CliFlowTests(TestCase):
             queue = self.run_vidra(root / "home", "project", "queue-list", "--json")
             self.assertEqual(queue, [])
 
+            replacement = root / "utopia-v2.html"
+            replacement.write_text(
+                "<!doctype html><html><body>Updated deep dive</body></html>",
+                encoding="utf-8",
+            )
+            replaced = self.run_vidra(
+                root / "home", "project", "register", "deeplethe/utopia",
+                "--report-file", str(replacement), "--title", "Utopia v2",
+                "--revision", "deadbeef", "--category", "knowledge/tools", "--replace",
+            )["project"]
+            self.assertFalse(moved_report.exists())
+            self.assertTrue((root / "home" / replaced["report_url"]).is_file())
+            with sqlite3.connect(root / "home" / "vidra.sqlite3") as connection:
+                display_name = connection.execute(
+                    "SELECT display_name FROM project_registry WHERE repository_key=?",
+                    ("deeplethe/utopia",),
+                ).fetchone()[0]
+            self.assertEqual(display_name, "Utopia v2")
+
     def test_multiple_skill_reports_share_project_catalog_without_colliding(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
+            home = root / "home"
+            env = {**os.environ, "VIDRA_HOME": str(home)}
+            subprocess.run(
+                [sys.executable, "-m", "vidra.cli", "init"],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            with sqlite3.connect(home / "vidra.sqlite3") as connection:
+                connection.execute(
+                    "INSERT INTO skill_candidates(repository_key,skill_path,source_url,revision,stars,category,status,discovered_at) VALUES(?,?,?,?,?,?,?,?)",
+                    ("owner/toolkit", "skills/debugging/SKILL.md", "https://github.com/owner/toolkit", "abc123", 200, "code-review", "discovered", "2026-09-05T00:00:00+00:00"),
+                )
             hashes = []
             for name in ("debugging", "review"):
                 report = root / f"{name}.html"
@@ -196,3 +229,26 @@ class CliFlowTests(TestCase):
             self.assertEqual(len(set(hashes)), 2)
             listed = self.run_vidra(root / "home", "project", "list", "--json")
             self.assertEqual(len(listed), 2)
+            seen = self.run_vidra(root / "home", "project", "seen", "owner/toolkit")
+            self.assertTrue(seen["seen"])
+            with sqlite3.connect(home / "vidra.sqlite3") as connection:
+                status = connection.execute(
+                    "SELECT status FROM skill_candidates WHERE repository_key=? AND skill_path=?",
+                    ("owner/toolkit", "skills/debugging/SKILL.md"),
+                ).fetchone()[0]
+            self.assertEqual(status, "analyzed")
+
+            old_report = home / listed[0]["report_url"]
+            replacement = root / "replacement.html"
+            replacement.write_text(
+                "<!doctype html><html><body>Replacement</body></html>",
+                encoding="utf-8",
+            )
+            replaced = self.run_vidra(
+                home, "project", "register-skill", "owner/toolkit",
+                "--skill-path", listed[0]["skill_path"], "--report-file", str(replacement),
+                "--title", "replacement", "--revision", "def456",
+                "--category", "ai/skills", "--replace",
+            )["project"]
+            self.assertFalse(old_report.exists())
+            self.assertTrue((home / replaced["report_url"]).is_file())

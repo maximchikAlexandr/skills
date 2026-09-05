@@ -102,6 +102,9 @@ def db():
         )
     if "skill_path" not in project_columns:
         conn.execute("ALTER TABLE projects ADD COLUMN skill_path TEXT")
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS skill_candidates(id INTEGER PRIMARY KEY,repository_key TEXT NOT NULL COLLATE NOCASE,skill_path TEXT NOT NULL,source_url TEXT NOT NULL,revision TEXT NOT NULL,stars INTEGER NOT NULL,license TEXT,category TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'discovered',discovered_at TEXT NOT NULL,UNIQUE(repository_key,skill_path));CREATE INDEX IF NOT EXISTS skill_candidates_category_idx ON skill_candidates(category,stars DESC);"""
+    )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS videos_report_hash_idx ON videos(report_hash)"
     )
@@ -295,6 +298,25 @@ def project_view(row):
         f"projects/{report_path.relative_to(PROJECT_REPORTS).as_posix()}"
     )
     return item
+
+
+def remove_replaced_project_artifacts(existing, current_report: Path, current_preview: str):
+    """Remove files made unreachable by a successful project replacement."""
+    if existing is None:
+        return
+    candidates = [Path(existing["report_path"])]
+    old_preview = existing["preview_url"]
+    if old_preview.startswith("projects/"):
+        candidates.append(PROJECT_REPORTS / old_preview.removeprefix("projects/"))
+    root = PROJECT_REPORTS.resolve()
+    current = {current_report.resolve()}
+    if current_preview.startswith("projects/"):
+        current.add((PROJECT_REPORTS / current_preview.removeprefix("projects/")).resolve())
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in current or root not in resolved.parents:
+            continue
+        resolved.unlink(missing_ok=True)
 
 
 def normalize_skill_path(value: str) -> str:
@@ -497,7 +519,8 @@ def project_register(
         preview = f"projects/{preview_target.relative_to(PROJECT_REPORTS).as_posix()}"
     with conn:
         conn.execute(
-            "INSERT OR IGNORE INTO project_registry(repository_key,repository_url,display_name,first_seen_at) VALUES(?,?,?,?)",
+            """INSERT INTO project_registry(repository_key,repository_url,display_name,first_seen_at) VALUES(?,?,?,?)
+            ON CONFLICT(repository_key) DO UPDATE SET repository_url=excluded.repository_url,display_name=excluded.display_name""",
             (repo.key, repo.url, title, stamp),
         )
         conn.execute(
@@ -525,6 +548,7 @@ def project_register(
             "UPDATE project_queue SET status='analyzed',error=NULL,completed_at=?,updated_at=? WHERE repository_key=? COLLATE NOCASE",
             (stamp, stamp, repo.key),
         )
+    remove_replaced_project_artifacts(existing, target, preview)
     payload = {
         "result": "registered" if not existing else "replaced",
         "project": project_view(
@@ -591,6 +615,11 @@ def project_register_skill(
         preview = f"projects/{preview_target.relative_to(PROJECT_REPORTS).as_posix()}"
     with conn:
         conn.execute(
+            """INSERT INTO project_registry(repository_key,repository_url,display_name,first_seen_at) VALUES(?,?,?,?)
+            ON CONFLICT(repository_key) DO UPDATE SET repository_url=excluded.repository_url,display_name=excluded.display_name""",
+            (identity_key, repo.url, title, stamp),
+        )
+        conn.execute(
             """INSERT INTO projects(repository_key,repository_url,owner,name,title,summary,stars,revision,report_hash,report_path,preview_url,category,created_at,updated_at,source_type,skill_path)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(repository_key) DO UPDATE SET repository_url=excluded.repository_url,owner=excluded.owner,name=excluded.name,title=excluded.title,summary=excluded.summary,stars=excluded.stars,revision=excluded.revision,report_hash=excluded.report_hash,report_path=excluded.report_path,preview_url=excluded.preview_url,category=excluded.category,updated_at=excluded.updated_at,source_type=excluded.source_type,skill_path=excluded.skill_path""",
@@ -598,6 +627,11 @@ def project_register_skill(
              revision, identity, str(target), preview, category, stamp, stamp,
              "github_skill", skill_path),
         )
+        conn.execute(
+            "UPDATE skill_candidates SET status='analyzed' WHERE repository_key=? COLLATE NOCASE AND skill_path=? COLLATE NOCASE",
+            (repo.key, skill_path),
+        )
+    remove_replaced_project_artifacts(existing, target, preview)
     project = project_view(
         conn.execute("SELECT * FROM projects WHERE repository_key=?", (identity_key,)).fetchone()
     )
@@ -710,8 +744,8 @@ def project_seen(repository: str):
     row = (
         db()
         .execute(
-            "SELECT * FROM project_registry WHERE repository_key=? COLLATE NOCASE",
-            (repo.key,),
+            "SELECT * FROM project_registry WHERE repository_key=? COLLATE NOCASE OR repository_key LIKE ? COLLATE NOCASE ORDER BY repository_key LIMIT 1",
+            (repo.key, repo.key + "#%"),
         )
         .fetchone()
     )
@@ -980,6 +1014,29 @@ def complete(
     emit(payload)
 
 
+def _attach_video_record(conn, video, member, attachment):
+    key = attachment["key"]
+    stamp = attachment["stamp"]
+    values = (
+        attachment["url"], attachment["slug"],
+        attachment["title"] or (video["title"] if video else attachment["url"]),
+        str(attachment["artifact_dir"]), member["report_title"],
+        member["report_concept"], str(attachment["target"]), attachment["report"],
+        attachment["report"], member["category"], stamp, stamp,
+    )
+    if video:
+        conn.execute(
+            "UPDATE videos SET source_url=?,source_slug=?,title=?,status='analyzed',artifact_dir=?,report_title=?,report_concept=?,report_path=?,report_hash=?,target_report_hash=?,category=?,error=NULL,completed_at=?,updated_at=? WHERE id=?",
+            (*values, video["id"]),
+        )
+        return video["id"]
+    cursor = conn.execute(
+        "INSERT INTO videos(source_key,source_url,source_slug,title,status,artifact_dir,report_title,report_concept,report_path,report_hash,target_report_hash,category,created_at,updated_at,completed_at) VALUES(?,?,?,?, 'analyzed',?,?,?,?,?,?,?,?,?,?)",
+        (key, *values, stamp),
+    )
+    return cursor.lastrowid
+
+
 def report_add(
     report: str,
     source: str,
@@ -1036,50 +1093,15 @@ def report_add(
     temporary.write_bytes(rendered)
     temporary.chmod(0o600)
     os.replace(temporary, target)
-    report_title = members[0]["report_title"]
-    category = members[0]["category"]
+    member = members[0]
+    category = member["category"]
     with conn:
-        if video:
-            conn.execute(
-                "UPDATE videos SET source_url=?,source_slug=?,title=?,status='analyzed',artifact_dir=?,report_title=?,report_concept=?,report_path=?,report_hash=?,target_report_hash=?,category=?,error=NULL,completed_at=?,updated_at=? WHERE id=?",
-                (
-                    url,
-                    slug,
-                    title or video["title"],
-                    str(artifact_dir),
-                    report_title,
-                    members[0]["report_concept"],
-                    str(target),
-                    report,
-                    report,
-                    category,
-                    stamp,
-                    stamp,
-                    video["id"],
-                ),
-            )
-            video_id = video["id"]
-        else:
-            cur = conn.execute(
-                "INSERT INTO videos(source_key,source_url,source_slug,title,status,artifact_dir,report_title,report_concept,report_path,report_hash,target_report_hash,category,created_at,updated_at,completed_at) VALUES(?,?,?,?,'analyzed',?,?,?,?,?,?,?,?,?,?)",
-                (
-                    key,
-                    url,
-                    slug,
-                    title or url,
-                    str(artifact_dir),
-                    report_title,
-                    members[0]["report_concept"],
-                    str(target),
-                    report,
-                    report,
-                    category,
-                    stamp,
-                    stamp,
-                    stamp,
-                ),
-            )
-            video_id = cur.lastrowid
+        video_id = _attach_video_record(
+            conn, video, member,
+            {"key": key, "url": url, "slug": slug, "title": title,
+             "artifact_dir": artifact_dir, "target": target, "report": report,
+             "stamp": stamp},
+        )
         conn.execute(
             "UPDATE runs SET status='analyzed',finished_at=?,error=NULL WHERE id=(SELECT id FROM runs WHERE video_id=? AND status='analyzing' ORDER BY id DESC LIMIT 1)",
             (stamp, video_id),
@@ -1095,6 +1117,24 @@ def report_add(
     if warning:
         payload["warning"] = warning
     emit(payload)
+
+
+def _prepare_addition_record(
+    conn, existing, *, key, url, slug, title, artifact_dir, report, stamp
+):
+    if existing:
+        conn.execute(
+            "UPDATE videos SET source_url=?,source_slug=?,title=?,request=?,status='analyzing',artifact_dir=?,target_report_hash=?,report_title=NULL,report_concept=NULL,report_path=NULL,report_hash=NULL,category='uncategorized',error=NULL,started_at=?,completed_at=NULL,updated_at=? WHERE id=?",
+            (url, slug, title or existing["title"], f"Add to report {report}",
+             str(artifact_dir), report, stamp, stamp, existing["id"]),
+        )
+        return existing["id"]
+    cursor = conn.execute(
+        "INSERT INTO videos(source_key,source_url,source_slug,title,request,status,artifact_dir,target_report_hash,created_at,updated_at,started_at) VALUES(?,?,?,?,?,'analyzing',?,?,?,?,?)",
+        (key, url, slug, title or url, f"Add to report {report}", str(artifact_dir),
+         report, stamp, stamp, stamp),
+    )
+    return cursor.lastrowid
 
 
 def report_add_video(
@@ -1130,39 +1170,10 @@ def report_add_video(
     transcript_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     stamp = now()
     with conn:
-        if existing:
-            conn.execute(
-                "UPDATE videos SET source_url=?,source_slug=?,title=?,request=?,status='analyzing',artifact_dir=?,target_report_hash=?,report_title=NULL,report_concept=NULL,report_path=NULL,report_hash=NULL,category='uncategorized',error=NULL,started_at=?,completed_at=NULL,updated_at=? WHERE id=?",
-                (
-                    url,
-                    slug,
-                    title or existing["title"],
-                    f"Add to report {report}",
-                    str(artifact_dir),
-                    report,
-                    stamp,
-                    stamp,
-                    existing["id"],
-                ),
-            )
-            video_id = existing["id"]
-        else:
-            cursor = conn.execute(
-                "INSERT INTO videos(source_key,source_url,source_slug,title,request,status,artifact_dir,target_report_hash,created_at,updated_at,started_at) VALUES(?,?,?,?,?,'analyzing',?,?,?,?,?)",
-                (
-                    key,
-                    url,
-                    slug,
-                    title or url,
-                    f"Add to report {report}",
-                    str(artifact_dir),
-                    report,
-                    stamp,
-                    stamp,
-                    stamp,
-                ),
-            )
-            video_id = cursor.lastrowid
+        video_id = _prepare_addition_record(
+            conn, existing, key=key, url=url, slug=slug, title=title,
+            artifact_dir=artifact_dir, report=report, stamp=stamp,
+        )
         run = conn.execute(
             "INSERT INTO runs(video_id,status,started_at) VALUES(?,'analyzing',?)",
             (video_id, stamp),
@@ -1463,10 +1474,10 @@ class Handler(BaseHTTPRequestHandler):
                     "UPDATE videos SET rating=?,updated_at=? WHERE report_hash=? AND status='analyzed'",
                     (rating, now(), identity),
                 )
-            elif source_type == "github_project":
+            elif source_type in {"github_project", "github_skill"}:
                 cursor = conn.execute(
-                    "UPDATE projects SET rating=?,updated_at=? WHERE report_hash=?",
-                    (rating, now(), identity),
+                    "UPDATE projects SET rating=?,updated_at=? WHERE report_hash=? AND source_type=?",
+                    (rating, now(), identity, source_type),
                 )
             else:
                 raise ValueError("invalid source type")

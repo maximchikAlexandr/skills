@@ -172,3 +172,27 @@ class CliFlowTests(TestCase):
             self.assertEqual(listed[0]["category"], "knowledge/tools")
             queue = self.run_vidra(root / "home", "project", "queue-list", "--json")
             self.assertEqual(queue, [])
+
+    def test_multiple_skill_reports_share_project_catalog_without_colliding(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            hashes = []
+            for name in ("debugging", "review"):
+                report = root / f"{name}.html"
+                report.write_text(
+                    "<!doctype html><html><body>Skill report</body></html>",
+                    encoding="utf-8",
+                )
+                registered = self.run_vidra(
+                    root / "home", "project", "register-skill", "owner/toolkit",
+                    "--skill-path", f"skills/{name}/SKILL.md",
+                    "--report-file", str(report), "--title", name,
+                    "--revision", "abc123", "--category", "ai/skills",
+                )["project"]
+                hashes.append(registered["report_hash"])
+                self.assertEqual(registered["source_type"], "github_skill")
+                self.assertEqual(registered["skill_path"], f"skills/{name}/SKILL.md")
+                self.assertTrue((root / "home" / registered["report_url"]).is_file())
+            self.assertEqual(len(set(hashes)), 2)
+            listed = self.run_vidra(root / "home", "project", "list", "--json")
+            self.assertEqual(len(listed), 2)

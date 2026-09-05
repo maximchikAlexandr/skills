@@ -107,10 +107,11 @@ const ReportCard = ({ report, onRate }) => {
 
 const ProjectCard = ({ project, onRate }) => {
   const [imageFailed, setImageFailed] = useState(false);
+  const isSkill = project.source_type === 'github_skill';
   return (
     <Card className="report-card project-card" withBorder padding={0}>
       <Anchor className="report-link" href={reportHref(project.report_url)}><Box className="thumb project-thumb">{project.preview_url && !imageFailed ? <Image src={project.preview_url} alt={`Превью ${repositoryLabel(project)}`} h="100%" w="100%" fit="cover" onError={() => setImageFailed(true)} /> : <IconBrandGithub size={42} stroke={1.5} />}</Box></Anchor>
-      <Stack gap={7} p="md"><Group justify="space-between" wrap="nowrap"><Badge leftSection={<IconBrandGithub size={12} />} variant="light">GitHub</Badge>{project.stars != null && <Text size="xs" c="dimmed">★ {project.stars.toLocaleString('ru-RU')}</Text>}</Group><Anchor className="title-link" href={reportHref(project.report_url)}><Title order={3} size="h4" lineClamp={2}>{project.title}</Title></Anchor><Text size="sm" fw={650}>{repositoryLabel(project)}</Text>{project.summary && <Text size="sm" c="dimmed" lineClamp={2}>{project.summary}</Text>}<Rating value={project.rating ?? 0} onChange={(rating) => onRate('github_project', project.report_hash, rating)} /><Text size="xs" ff="monospace" c="dimmed">{project.revision.slice(0, 12)}</Text></Stack>
+      <Stack gap={7} p="md"><Group justify="space-between" wrap="nowrap"><Badge leftSection={<IconBrandGithub size={12} />} variant="light">{isSkill ? 'GitHub Skill' : 'GitHub'}</Badge>{project.stars != null && <Text size="xs" c="dimmed">★ {project.stars.toLocaleString('ru-RU')}</Text>}</Group><Anchor className="title-link" href={reportHref(project.report_url)}><Title order={3} size="h4" lineClamp={2}>{project.title}</Title></Anchor><Text size="sm" fw={650}>{repositoryLabel(project)}</Text>{isSkill && <Text size="xs" ff="monospace" c="dimmed" lineClamp={1}>{project.skill_path}</Text>}{project.summary && <Text size="sm" c="dimmed" lineClamp={2}>{project.summary}</Text>}<Rating value={project.rating ?? 0} onChange={(rating) => onRate('github_project', project.report_hash, rating)} /><Text size="xs" ff="monospace" c="dimmed">{project.revision.slice(0, 12)}</Text></Stack>
     </Card>
   );
 };

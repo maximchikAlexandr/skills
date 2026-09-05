@@ -12,6 +12,16 @@ vidra project register owner/repository --report-file report.html \
   --category developer-tools/example
 ```
 
+Register an analyzed AI skill in the same GitHub-project section (one repository
+may contribute multiple skill reports):
+
+```bash
+vidra project register-skill owner/repository \
+  --skill-path skills/example/SKILL.md --report-file report.html \
+  --title "Example skill" --revision COMMIT_SHA --summary "Behavioral contract" \
+  --stars 123 --category ai/skills/example
+```
+
 The command validates the GitHub identity, assigns a stable 12-character report
 hash, stores `<hash>.html`, injects a `Все проекты` return link, and exposes the
 record through the catalog API. `vidra project list --json` is the canonical

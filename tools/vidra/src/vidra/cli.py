@@ -96,6 +96,12 @@ def db():
         conn.execute(
             "ALTER TABLE projects ADD COLUMN rating INTEGER CHECK(rating BETWEEN 1 AND 5)"
         )
+    if "source_type" not in project_columns:
+        conn.execute(
+            "ALTER TABLE projects ADD COLUMN source_type TEXT NOT NULL DEFAULT 'github_project'"
+        )
+    if "skill_path" not in project_columns:
+        conn.execute("ALTER TABLE projects ADD COLUMN skill_path TEXT")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS videos_report_hash_idx ON videos(report_hash)"
     )
@@ -289,6 +295,19 @@ def project_view(row):
         f"projects/{report_path.relative_to(PROJECT_REPORTS).as_posix()}"
     )
     return item
+
+
+def normalize_skill_path(value: str) -> str:
+    """Return a stable repository-relative path for one analyzed skill."""
+    path = value.strip().strip("/")
+    if not path or path.startswith(".") or "//" in path:
+        raise ValueError("skill path must be a repository-relative path")
+    parts = path.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("skill path must not contain empty or traversal segments")
+    if not path.lower().endswith("skill.md"):
+        raise ValueError("skill path must point to SKILL.md")
+    return path
 
 
 def project_queue_view(row):
@@ -514,6 +533,75 @@ def project_register(
             ).fetchone()
         ),
     }
+    warning = project_category_warning(conn, category)
+    if warning:
+        payload["warning"] = warning
+    emit(payload, True)
+
+
+def project_register_skill(
+    repository: str,
+    skill_path: str = typer.Option(...),
+    report_file: Path = typer.Option(...),
+    title: str = typer.Option(...),
+    revision: str = typer.Option(...),
+    summary: str = typer.Option(""),
+    stars: Optional[int] = typer.Option(None),
+    preview_file: Optional[Path] = typer.Option(None),
+    category: str = typer.Option("ai/skills"),
+    replace: bool = typer.Option(False),
+):
+    """Register one AI-skill report in the GitHub-project catalog section."""
+    try:
+        repo = normalize_github_repository(repository)
+        skill_path = normalize_skill_path(skill_path)
+        category = normalize_category(category)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    source = report_file.expanduser().resolve()
+    if not source.is_file() or source.suffix.lower() != ".html":
+        raise SystemExit("--report-file must be an existing HTML file")
+    conn = db()
+    identity_key = f"{repo.key}#{skill_path.lower()}"
+    existing = conn.execute(
+        "SELECT * FROM projects WHERE repository_key=? COLLATE NOCASE",
+        (identity_key,),
+    ).fetchone()
+    if existing and not replace:
+        emit({"result": "already_registered", "project": project_view(existing)})
+        return
+    identity = project_report_hash(identity_key, revision)
+    target_dir = PROJECT_REPORTS / category
+    target_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target = target_dir / f"{identity}.html"
+    target.write_bytes(with_project_navigation(source, project_library_href(target)))
+    target.chmod(0o600)
+    stamp = now()
+    preview = f"https://opengraph.githubassets.com/{identity}/{repo.owner}/{repo.name}"
+    if preview_file is not None:
+        preview_source = preview_file.expanduser().resolve()
+        if not preview_source.is_file():
+            raise SystemExit("--preview-file must be an existing image")
+        suffix = preview_source.suffix.lower()
+        if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+            raise SystemExit("--preview-file must be PNG, JPEG, or WebP")
+        preview_target = target_dir / f"{identity}{suffix}"
+        preview_target.write_bytes(preview_source.read_bytes())
+        preview_target.chmod(0o600)
+        preview = f"projects/{preview_target.relative_to(PROJECT_REPORTS).as_posix()}"
+    with conn:
+        conn.execute(
+            """INSERT INTO projects(repository_key,repository_url,owner,name,title,summary,stars,revision,report_hash,report_path,preview_url,category,created_at,updated_at,source_type,skill_path)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(repository_key) DO UPDATE SET repository_url=excluded.repository_url,owner=excluded.owner,name=excluded.name,title=excluded.title,summary=excluded.summary,stars=excluded.stars,revision=excluded.revision,report_hash=excluded.report_hash,report_path=excluded.report_path,preview_url=excluded.preview_url,category=excluded.category,updated_at=excluded.updated_at,source_type=excluded.source_type,skill_path=excluded.skill_path""",
+            (identity_key, repo.url, repo.owner, repo.name, title, summary, stars,
+             revision, identity, str(target), preview, category, stamp, stamp,
+             "github_skill", skill_path),
+        )
+    project = project_view(
+        conn.execute("SELECT * FROM projects WHERE repository_key=?", (identity_key,)).fetchone()
+    )
+    payload = {"result": "registered" if not existing else "replaced", "project": project}
     warning = project_category_warning(conn, category)
     if warning:
         payload["warning"] = warning
@@ -1544,6 +1632,7 @@ report_app.command("normalize")(normalize_reports)
 report_app.command("move")(move_report)
 category_app.command("tree")(category_tree)
 project_app.command("register")(project_register)
+project_app.command("register-skill")(project_register_skill)
 project_app.command("list")(project_list)
 project_app.command("seen")(project_seen)
 project_app.command("remember")(project_remember)

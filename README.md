@@ -1,6 +1,8 @@
 # Skills
 
 - `skills/development/python-testing` — testing strategies for Python projects.
+- `skills/development/explain-diff-html` — deep HTML explanations of code
+  changes with diagrams, examples, and an interactive quiz.
 - `skills/education/video-analyzer` — transcript-grounded video analysis with
   practical and theoretical HTML report templates.
 - `skills/education/discover-github-projects` — evidence-backed GitHub project

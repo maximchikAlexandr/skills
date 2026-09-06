@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Project Deep Dive"
+  short_description: "Evidence-backed architecture and runtime reports"
+  default_prompt: "Research a GitHub project, create a validated HTML deep dive, and register it in Vidra."

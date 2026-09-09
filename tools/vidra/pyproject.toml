@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vidra"
+version = "0.1.0"
+description = "Local SQLite-backed source queue and analysis report catalog"
+requires-python = ">=3.9"
+dependencies = ["typer>=0.12,<1"]
+
+[project.scripts]
+vidra = "vidra.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

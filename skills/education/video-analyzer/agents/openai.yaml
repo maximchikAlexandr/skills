@@ -1,0 +1,4 @@
+interface:
+  display_name: "Video Analyzer"
+  short_description: "Create transcript-grounded video reports"
+  default_prompt: "Queue, transcribe, classify, and deeply analyze this video with traceable timestamps."

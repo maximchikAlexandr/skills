@@ -1,0 +1,47 @@
+.report-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.title-link:hover {
+  text-decoration: underline;
+}
+
+.rating {
+  width: max-content;
+}
+
+.star {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #c9cec8;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+
+.star:hover,
+.star:focus-visible,
+.star.active {
+  color: #e5a50a;
+}
+
+.star:hover {
+  transform: scale(1.13);
+}
+
+.star:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 1px;
+  border-radius: 4px;
+}

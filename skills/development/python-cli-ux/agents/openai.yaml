@@ -1,0 +1,4 @@
+interface:
+  display_name: "Python CLI UX"
+  short_description: "Audit and improve Python CLI usability"
+  default_prompt: "Use $python-cli-ux to audit this Python CLI and propose the smallest useful improvements."

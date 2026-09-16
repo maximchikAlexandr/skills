@@ -1,0 +1,4 @@
+interface:
+  display_name: Explain Diff HTML
+  short_description: Teach a code change with examples, diagrams, and a quiz
+  default_prompt: Create a deep HTML explanation of this code change.

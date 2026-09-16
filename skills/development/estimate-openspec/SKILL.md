@@ -1,12 +1,12 @@
 ---
 name: estimate-openspec
-description: Estimate development time in hours for an OpenSpec change from its complete document package and the current Python source code. Use when asked to estimate, size, or assess implementation effort before development. Produces an evidence-based estimate only; does not implement the change or schedule work.
+description: Estimate development time in hours for an OpenSpec change from its complete document package and the current implementation. Use when asked to estimate, size, or assess implementation effort before development. Produces an evidence-based estimate only; does not implement the change or schedule work.
 ---
 
 # Estimate OpenSpec
 
 Produce a development-time estimate grounded in the supplied OpenSpec change and
-the actual Python implementation. Return hours, a realistic range, and the reasons
+the actual implementation. Return hours, a realistic range, and the reasons
 for uncertainty. Stop after the estimate.
 
 ## Scope and operating boundary
@@ -30,7 +30,7 @@ for uncertainty. Stop after the estimate.
 ## 1. Establish what the hours mean
 
 Use an executor explicitly named by the user. Otherwise default to **one
-experienced Python developer familiar with the stack, without AI acceleration**.
+experienced developer familiar with the project stack, without AI acceleration**.
 State this default in the report; the estimating model is not automatically the
 implementation executor.
 
@@ -83,7 +83,7 @@ decision changes the solution substantially, present conditional estimates for t
 plausible interpretations. Ask a targeted question only when no useful bounded
 estimate can be produced. A missing optional artifact is not automatically a blocker.
 
-## 3. Ground the estimate in Python source
+## 3. Ground the estimate in the current implementation
 
 Record the source revision and relevant uncommitted changes if Git information is
 available; otherwise identify the supplied snapshot. Read affected code and its
@@ -99,9 +99,9 @@ test configuration. Check, where applicable:
   idempotency, transactions, database schema changes, and data migrations.
 - Test fixtures, mocks, database/service requirements, integration coverage, and
   recorded test duration. Do not run tests to manufacture timing evidence.
-- Framework-specific extension points, such as FastAPI dependencies, Django or
-  SQLAlchemy migrations, Odoo models/manifests, or CLI command registration,
-  only when they are present in the project.
+- Stack-specific extension points and delivery constraints, such as mobile platform
+  boundaries, React Native native modules, web or backend framework hooks, build
+  configuration, packaging, or CLI registration, only when present in the project.
 
 Find close local analogues and cite their paths/symbols. Distinguish existing
 working code from stubs, TODOs, and unverified implementations. A checked task is

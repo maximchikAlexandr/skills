@@ -7,7 +7,7 @@ telemetry, instrument the project, run experiments, or write calibration history
 
 For each usable record identify the executor, task class, accepted scope, estimate,
 actual duration, timing definition, environment, and completion outcome. Prefer
-similar Python work in the same repository with the same definition of done.
+similar work in the same repository and technology stack with the same definition of done.
 
 Do not mix active human effort, end-to-end agent run time, calendar lead time,
 or token cost. Commit timestamps and closed issue dates do not measure effort.

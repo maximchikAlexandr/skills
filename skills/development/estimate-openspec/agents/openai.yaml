@@ -1,0 +1,4 @@
+interface:
+  display_name: "Estimate OpenSpec"
+  short_description: "Estimate Python development hours from OpenSpec"
+  default_prompt: "Use $estimate-openspec to estimate development hours for this OpenSpec change using the complete change documents and Python source code."

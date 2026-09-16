@@ -1,6 +1,8 @@
 # Skills
 
 - `skills/development/python-testing` — testing strategies for Python projects.
+- `skills/development/estimate-openspec` — evidence-based Python development
+  effort estimates from complete OpenSpec change packages.
 - `skills/development/python-cli-ux` — focused Python CLI usability audits,
   automation contracts, startup performance, and recoverable compact output.
 - `skills/development/explain-diff-html` — deep HTML explanations of code

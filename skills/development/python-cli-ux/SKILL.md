@@ -88,9 +88,13 @@ CI behavior.
 Preserve stable command names, option semantics, output schemas, and exit meanings.
 Human presentation may evolve; machine contracts must not change accidentally.
 
-- A bounded structured command emits exactly one JSON document on stdout.
+- A bounded structured command emits exactly one JSON document on stdout, including
+  a schema version. On failure, keep that contract by emitting a documented error
+  envelope on stdout and exiting nonzero; optional human diagnostics stay on stderr.
 - A streaming structured command emits one JSON object per line. Give each event
   a `type`; include a schema version in the stream's first event or every record.
+  When possible, emit a typed terminal error event before a nonzero exit; abrupt
+  termination is reserved for signals or failures that prevent further output.
 - Use a major/minor schema policy: additive minor changes require readers to
   ignore unknown fields; incompatible changes require a new major version.
 - Keep diagnostics on stderr and exclude ANSI, prompts, progress, and incidental
@@ -114,9 +118,10 @@ outcome.
   action. Do not add a ceremonial dry-run that omits decisive work.
 - If execution must match reviewed state, save or identify the plan and validate
   it again before apply. Otherwise prefer the simpler preview-then-execute flow.
-- Prompt only on an interactive stdin. Require an explicit `--yes`, `--no-input`,
-  or equivalent path for automation, and fail rather than hang when required
-  input is missing.
+- Prompt only on an interactive stdin. Use `--yes` or an equally explicit flag to
+  authorize an already identified action. `--no-input` only disables prompting:
+  it must fail rather than imply consent when confirmation or other input is
+  required.
 - For high-risk deletion, consider confirming the target identity rather than a
   generic yes/no. Keep safe retries idempotent and use locking or conflict checks
   when concurrent mutation can corrupt state.
@@ -216,8 +221,9 @@ functions. Select the applicable rows from this matrix:
 - valid input, invalid input, `--`, config precedence, `--no-config`, and redaction;
 - interactive prompts through a PTY and non-interactive missing-input failure;
 - TTY, redirected stdout/stderr, narrow terminal, `NO_COLOR`, and plain output;
-- bounded JSON and streaming JSON Lines schema, stdout/stderr separation, and no
-  ANSI or prompts in machine mode;
+- bounded JSON and streaming JSON Lines schema versions, parseable bounded error
+  envelopes, terminal stream error events, stdout/stderr separation, and no ANSI
+  or prompts in machine mode;
 - documented success, negative-result, usage, failure, partial-success, child,
   SIGINT, and cancellation exit behavior;
 - dry-run/plan parity, destructive confirmation, idempotent repeat, and concurrent

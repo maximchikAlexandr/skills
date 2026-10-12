@@ -1,6 +1,8 @@
 # Skills
 
 - `skills/development/python-testing` — testing strategies for Python projects.
+- `skills/development/plan-openspec-e2e` — OpenSpec-based planning of local
+  scripts, independent agent checks, images, GitLab artifacts, and CI coverage.
 - `skills/development/estimate-openspec` — evidence-based Python development
   effort estimates from complete OpenSpec change packages.
 - `skills/development/python-cli-ux` — focused Python CLI usability audits,

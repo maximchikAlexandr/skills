@@ -21,9 +21,16 @@ Translate affected WHEN/THEN scenarios into initial state, one meaningful public
 
 Use one compact matrix:
 
-`case ID | OpenSpec requirement/scenario | affected OpenAPI operation/schema, if any | local test script | independent agent steps | CI disposition/test/job | assertions | artifacts/images`
+`case ID | OpenSpec requirement/scenario | verification gap/local E2E decision | affected OpenAPI operation/schema, if any | local test script | independent agent steps | CI disposition/test/job | assertions | artifacts/images`
 
-Every affected scenario/contract must map to a new case, existing coverage, a sufficient lower-level check or a reasoned exclusion. E2E may be unnecessary for internal refactoring; record the reason and adequate unit/integration/contract checks rather than creating ceremonial tests.
+Every affected scenario/contract must map to a new case, existing coverage, a sufficient lower-level check or a reasoned exclusion. Select local E2E only when:
+
+- A material expected result depends on a real interaction between components (processes, database/filesystem, external service or browser) that existing or planned unit/integration/contract/CI tests cannot adequately prove.
+- The specification or delivery contract explicitly requires a live walkthrough or capture that those tests do not provide.
+
+For each selected local case name the remaining verification gap, observable failure and why a cheaper check is insufficient. Choose the smallest setup and walkthrough that close that gap; justify costly prerequisites by the behavior they prove. Reuse adequate existing CI E2E instead of duplicating it locally. Missing coverage alone is not a reason for local E2E when adding a lower-level test suffices.
+
+If no local gap or required live evidence remains, record `e2e_required=false`, the reason and concrete sufficient tests/assertions. Internal refactoring, documentation or build/configuration changes can qualify, but their label or patch size does not establish safety. A public API change alone does not require a live stand. Unavailable infrastructure is a blocker for a necessary check, not a reason to mark E2E unnecessary; preserve explicitly required checks.
 
 For each selected case specify concrete CLI/SDK/API/UI calls, initial data, dependencies, expected outputs/exit codes, observable assertions and failure-safe cleanup. Reuse existing infrastructure and fixtures. Cover relevant OpenAPI request/result/error behavior at a real public boundary rather than merely checking that a schema file exists.
 
@@ -45,6 +52,8 @@ Producing before/after images is a primary purpose of the walkthrough when visib
 - Changed logs, progress and final summaries: mandatory images of the affected states.
 - Changed browser UI: actual before/after screenshots when supported by the available environment.
 - Unchanged output/internal behavior: no decorative images.
+
+Image requirements determine the minimum capture scope, not a whole-product E2E run. When capture is the only remaining gap, plan a focused CLI/UI walkthrough with only the resources needed to obtain genuine output. Reuse lower-level assertions rather than creating duplicate local test scripts; retain all required images and their observations.
 
 Specify baseline/candidate revisions, equivalent fixtures, locale, width/output mode and reset between runs. Define which output/state each image must show and its artifact filename. Require real captures; unavailable baseline or capture is a concrete evidence gap, not permission to invent a comparison.
 

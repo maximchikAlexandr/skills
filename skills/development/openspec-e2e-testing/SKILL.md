@@ -23,6 +23,8 @@ Read toolchain, workspace/resource ownership, test-code destination and publicat
 
 Use isolated test-owned state and the installed product from a recorded SHA. Reuse existing runners and fixtures; write reproducible test scripts, necessary setup and failure-safe cleanup at the task-assigned test-code location, whether in the product repository or a separate workspace. Avoid a parallel runner/validator framework. Verify commands, expected exit codes and meaningful assertions through public CLI/SDK/API/UI boundaries.
 
+Separate runner preparation from live execution. Before consuming a live attempt, use one resolved binding map for command arguments and every case phase; check required resources, restore/readiness steps, captures and assertions against recorded actual responses. In managed E2E work, offline self-tests of the runner's parsing, substitution and assertions are allowed without Odoo, PostgreSQL or Docker, even when local product tests are disallowed. This narrow permission does not authorize other local tests or change the live attempt budget. Fix preparation errors before starting or repeating live cases; preserve the existing attempt ledger and evidence.
+
 Run the tests freshly; distinguish pass, fail, blocked and not run. Missing prerequisites are blockers, not successful skips. Clean up only resources owned by the run, including on failure; preserve committed evidence. Do not change production behavior to make a test pass.
 
 ## 3. Perform independent agent checks and capture images

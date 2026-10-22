@@ -25,6 +25,8 @@ Use isolated test-owned state and the installed product from a recorded SHA. Reu
 
 Separate runner preparation from live execution. Before consuming a live attempt, use one resolved binding map for command arguments and every case phase; check required resources, restore/readiness steps, captures and assertions against recorded actual responses. In managed E2E work, offline self-tests of the runner's parsing, substitution and assertions are allowed without Odoo, PostgreSQL or Docker, even when local product tests are disallowed. This narrow permission does not authorize other local tests or change the live attempt budget. Fix preparation errors before starting or repeating live cases; preserve the existing attempt ledger and evidence.
 
+Before live execution, exercise the exact executable manifest through the same executor with recorded actual-response fixtures for available success, refusal and error schemas. Cover every helper entrypoint and producer/consumer path; negative oracles must prove that the next mutation is not reached and that an unexpected failure stops the whole sequence. Under every interpreter assigned to the live package, verify real imports and the relevant API/decode calls without process doubles at that boundary. Runner self-tests or a mock of the same path alone do not establish readiness. Identify any missing actual fixture or unverified boundary explicitly; do not make it pass by weakening assertions or performing real lifecycle mutations during preparation.
+
 Run the tests freshly; distinguish pass, fail, blocked and not run. Missing prerequisites are blockers, not successful skips. Clean up only resources owned by the run, including on failure; preserve committed evidence. Do not change production behavior to make a test pass.
 
 ## 3. Perform independent agent checks and capture images
@@ -48,6 +50,8 @@ Store scripts, reusable fixtures and actual generated files at the assigned dest
 Select only files or state projections that prove the requirements. Preserve genuine generated content; avoid environment dumps, build binaries and unrelated logs. Record compact scenario/revision/command/exit-status provenance, separating the product revision actually tested from test-code/evidence revisions. Resolve revisions at execution time and record them; no manual hardcoding in command templates is required.
 
 Keep evidence accessible after routine teardown. Publish concise per-case automated and independent-check verdicts, findings, tested revisions and evidence references through the assigned channel. Include required image pairs labelled by scenario and baseline/candidate revision; verify delivery and accessibility using that channel's read-back mechanism. Before capture/publication, redact private values and sensitive data from text, pixels, filenames and metadata. Report missing required evidence explicitly.
+
+Classify failures as scenario/dependency, product or environment findings and report them through the assigned handoff route for the appropriate owner. Preserve successful cases on the same product SHA when their material bindings and fixtures are unchanged. Resume remaining work only from an explicit manifest with fresh evidence output paths; do not overwrite prior outputs or reset the attempt ledger. On a new product SHA, carry a prior PASS forward only with a documented impact assessment, never by automatic equivalence.
 
 ## 5. Verify delivered CI coverage
 

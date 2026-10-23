@@ -69,6 +69,12 @@ Prioritize public CLI/SDK/API paths reproducible with disposable CI data. Privat
 
 Record required CI tests, fixtures and checks as explicit OpenSpec tasks with ownership supplied by the project's workflow. Keep CI implementation separate from local verification duties according to that contract; this skill assigns no named agent roles. No new CI framework by default. Keep automated, independent-agent and CI outcomes separate in the evidence contract.
 
+## Cost-aware execution order
+
+For live cases, plan a readiness gate before consuming an attempt: exact product revision, source-of-truth behavior, focused regression/CI results, isolated bindings, and runner checks. Where the delivery workflow requires review or commit-message compliance, identify their owners and verify those gates early, before the final live handoff. Plan the required full review on a consolidated, checked revision instead of intermediate fix commits; do not waive a mandatory re-review after product changes. Arrange cases so a failed case can be diagnosed with its captured evidence and cheaper deterministic tests before another live attempt. Give every live attempt a named verification gap; do not use live runs to debug test scripts or setup.
+
+Record case-level PASS with the tested product revision and material fixtures. Preserve a PASS on the same revision when those inputs are unchanged. For a new revision, require an explicit impact assessment and rerun only affected cases; unresolved impact means the case remains unverified. Never reset an existing run ledger or spend a new attempt to repeat already sufficient evidence. Respect any accepted plan, required live cases, review gates and attempt budget.
+
 ## Completion
 
 Persist a concise English technical plan: source mapping, scripts, manual steps, image requirements, artifacts, assertions, dependencies and cleanup. Keep discussion history, approvals, routing and review ledgers outside Git. Record concrete gaps before independent plan verification; do not label planned tests as passed or start the tester.

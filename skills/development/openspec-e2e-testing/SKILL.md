@@ -29,6 +29,8 @@ Before live execution, exercise the exact executable manifest through the same e
 
 Run the tests freshly; distinguish pass, fail, blocked and not run. Missing prerequisites are blockers, not successful skips. Clean up only resources owned by the run, including on failure; preserve committed evidence. Do not change production behavior to make a test pass.
 
+When a live case fails, first preserve the failing attempt's evidence and classify product, runner, dependency, or environment cause. Reproduce and fix runner/schema/setup errors with recorded responses and permitted offline checks; route product defects for focused deterministic regression and fix. Re-enter live execution only after the responsible owner has accepted the correction, the required review/CI gates are satisfied for an exact SHA, and the failed case's prerequisites are revalidated. Do not consume a live attempt solely to diagnose a failure whose cause can be established from saved evidence or a cheaper test.
+
 ## 3. Perform independent agent checks and capture images
 
 Walk through each relevant user path independently of its automated test. Execute public actions and inspect actual outputs, generated files or system state. Running the same test twice is not a manual check. Record steps and expected/actual observations separately; explain any case without a useful independent check.
